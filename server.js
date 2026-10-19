@@ -56,6 +56,11 @@ app.post('/api/lighting/control', (req, res) => {
 });
 
 // === 4. FITUR B: SMART DOOR LOCK RFID (NO. 4) ===
+// ESP32 membaca perintah kunci dari dashboard (tambahan kontrak)
+app.get('/api/doorlock', (req, res) => {
+  res.json({ lock_status: systemState.doorlock.lock_status });
+});
+
 app.post('/api/doorlock', (req, res) => {
   const { last_uid, lock_status, access_alert } = req.body;
   if (last_uid !== undefined) systemState.doorlock.last_uid = String(last_uid);
@@ -70,9 +75,10 @@ app.post('/api/doorlock', (req, res) => {
 
 app.post('/api/doorlock/control', (req, res) => {
   const { lock_status } = req.body;
-  if (lock_status) {
+  if (lock_status === "LOCKED" || lock_status === "UNLOCKED") {
     systemState.doorlock.lock_status = lock_status;
     systemState.doorlock.access_alert = lock_status === "LOCKED" ? "AMAN" : "DIIZINKAN";
+    systemState.doorlock.updated_at = nowTime();
     addLog("DOORLOCK", `Override manual via Web: ${lock_status}`, "control");
   }
   res.json({ ok: true, doorlock: systemState.doorlock });
@@ -136,3 +142,5 @@ app.listen(PORT, '0.0.0.0', () => {
   addLog("SYSTEM", "Smart Home Hub Server aktif dan siap menerima koneksi ESP32.", "info");
   console.log(`Server Smart Home berjalan di port ${PORT}`);
 });
+
+module.exports = app;
