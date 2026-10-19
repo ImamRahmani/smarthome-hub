@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SMART HOME HUB // TELEMETRY & CONTROL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0a0c10;
+      --bg-panel: #11141b;
+      --bg-elevated: #171b24;
+      --border: #232936;
+      --border-focus: #384152;
+      --text-main: #e6edf3;
+      --text-muted: #7d8590;
+      --accent-green: #2ea043;
+      --accent-amber: #d29922;
+      --accent-red: #f85149;
+      --accent-blue: #2f81f7;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Inter', -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1380px;
+      margin: 0 auto;
+    }
+
+    /* HEADER BAR */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+
+    .brand-title {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+    }
+
+    .brand-sub {
+      color: var(--text-muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .topbar-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      border: 1px solid transparent;
+    }
+
+    .badge-green { background: rgba(46, 160, 67, 0.12); color: #3fb950; border-color: rgba(46, 160, 67, 0.35); }
+    .badge-amber { background: rgba(210, 153, 34, 0.12); color: #e3b341; border-color: rgba(210, 153, 34, 0.35); }
+    .badge-red   { background: rgba(248, 81, 73, 0.12); color: #ff7b72; border-color: rgba(248, 81, 73, 0.35); }
+    .badge-neutral { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
+
+    /* DOORBELL BANNER ALERT */
+    .doorbell-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(210, 153, 34, 0.14);
+      border: 1px solid var(--accent-amber);
+      padding: 12px 20px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .doorbell-banner.active {
+      display: flex;
+    }
+
+    /* BENTO GRID */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .col-4 { grid-column: span 4; }
+    .col-6 { grid-column: span 6; }
+    .col-8 { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+
+    @media (max-width: 1024px) {
+      .col-4, .col-6, .col-8 { grid-column: span 6; }
+    }
+    @media (max-width: 680px) {
+      .col-4, .col-6, .col-8 { grid-column: span 12; }
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-top: 2px;
+    }
+
+    /* METRICS */
+    .metric-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 8px 0 16px;
+    }
+
+    .metric-val {
+      font-family: var(--mono);
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .metric-unit {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .kv-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .kv-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 4px;
+    }
+
+    .kv-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      margin-bottom: 4px;
+    }
+
+    .kv-data {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* CONTROLS */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      background: var(--bg-elevated);
+      color: var(--text-main);
+      border: 1px solid var(--border-focus);
+      padding: 8px 14px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover {
+      background: #222834;
+      border-color: #525f78;
+    }
+
+    button.btn-primary {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+      color: #fff;
+    }
+
+    button.btn-danger {
+      background: rgba(248, 81, 73, 0.15);
+      border-color: var(--accent-red);
+      color: #ff7b72;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-blue);
+      margin: 10px 0;
+      cursor: pointer;
+    }
+
+    input[type="text"] {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 12px;
+      width: 100%;
+    }
+
+    /* PROGRESS BAR */
+    .bar-track {
+      width: 100%;
+      height: 10px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 10px 0 14px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: var(--accent-blue);
+      transition: width 0.25s ease;
+    }
+
+    /* CAMERA VIEWPORT */
+    .cam-viewport {
+      width: 100%;
+      height: 210px;
+      background: #07090c;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .cam-viewport img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .cam-placeholder {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 20px;
+    }
+
+    /* LOGS */
+    .log-box {
+      background: #07090c;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      height: 210px;
+      overflow-y: auto;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #141821;
+      display: flex;
+      gap: 10px;
+    }
+
+    .log-time { color: var(--text-muted); flex-shrink: 0; }
+    .log-mod { font-weight: 700; width: 95px; flex-shrink: 0; }
+
+    .card-footer {
+      margin-top: 14px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- TOP HEADER -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="status-dot" id="connDot"></div>
+        <div>
+          <div class="brand-title">SMART HOME HUB // INTEGRATED CONTROL</div>
+          <div class="brand-sub">NODE.JS REST TELEMETRY ENGINE • WOKWI & ESP32 CLUSTER</div>
+        </div>
+      </div>
+      <div class="topbar-meta">
+        <span>POLLING: <strong style="color:var(--text-main)">1500ms</strong></span>
+        <span>WIRING: <span class="badge badge-green">5V / 3.3V RAIL OK</span></span>
+        <span id="serverClock">--:--:--</span>
+      </div>
+    </header>
+
+    <!-- DOORBELL ALERT BANNER -->
+    <div class="doorbell-banner" id="doorbellBanner">
+      <div>
+        <strong style="font-family:var(--mono); color:#e3b341;">[ALERT NO. 5] VIDEO DOORBELL TRIGGERED!</strong>
+        <div style="font-size:13px; color:var(--text-main);">Pengunjung menekan tombol bel di depan pintu. Periksa kamera keamanan atau konfirmasi.</div>
+      </div>
+      <button onclick="ackDoorbell()">KONFIRMASI / MATIKAN ALARM</button>
+    </div>
+
+    <!-- MAIN BENTO GRID -->
+    <div class="grid">
+      <!-- 1. SMART LIGHTING (NO. 2) -->
+      <section class="card col-4">
+        <div>
+          <div class="card-header">
+            <div>
+              <div class="card-id">MODUL 02 // SIMULATOR 1 (GPIO 25)</div>
+              <div class="card-title">Smart Lighting (PWM)</div>
+            </div>
+            <span class="badge badge-neutral" id="lampBadge">OFF</span>
+          </div>
+
+          <div class="metric-row">
+            <span class="metric-val" id="lampIntensityVal">0</span>
+            <span class="metric-unit">% DUTY CYCLE</span>
+          </div>
+
+          <input type="range" id="lampSlider" min="0" max="100" value="0" onchange="setLightingIntensity(this.value)" oninput="document.getElementById('lampIntensityVal').innerText = this.value" />
+
+          <div class="btn-row" style="margin-top: 10px;">
+            <button class="btn-primary" onclick="setLightingPreset(100)">ON (100%)</button>
+            <button onclick="setLightingPreset(40)">DIM (40%)</button>
+            <button onclick="setLightingPreset(0)">OFF (0%)</button>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>ENDPOINT: GET /api/lighting</span>
+          <span id="lampUpdated">LAST SYNC: -</span>
+        </div>
+      </section>
+
+      <!-- 2. SMART DOOR LOCK (NO. 4) -->
+      <section class="card col-4">
+        <div>
+          <div class="card-header">
+            <div>
+              <div class="card-id">MODUL 04 // SIMULATOR 1 (RC522 + SERVO)</div>
+              <div class="card-title">Smart Door Lock RFID</div>
+            </div>
+            <span class="badge badge-green" id="doorAlertBadge">AMAN</span>
+          </div>
+
+          <div class="kv-list">
+            <div class="kv-box">
+              <div class="kv-label">GERENDEL SERVO</div>
+              <div class="kv-data" id="doorLockStatus">LOCKED</div>
+            </div>
+            <div class="kv-box">
+              <div class="kv-label">UID TERAKHIR</div>
+              <div class="kv-data" id="doorLastUid">-</div>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button onclick="overrideDoor('UNLOCKED')">BUKA PINTU (WEB)</button>
+            <button onclick="overrideDoor('LOCKED')">KUNCI PINTU</button>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>ENDPOINT: POST /api/doorlock</span>
+          <span id="doorUpdated">LAST SYNC: -</span>
+        </div>
+      </section>
+
+      <!-- 3. VIDEO DOORBELL (NO. 5) -->
+      <section class="card col-4">
+        <div>
+          <div class="card-header">
+            <div>
+              <div class="card-id">MODUL 05 // SIMULATOR 1 (GPIO 14 & 26)</div>
+              <div class="card-title">Video Doorbell & Buzzer</div>
+            </div>
+            <span class="badge badge-neutral" id="bellStateBadge">STANDBY</span>
+          </div>
+
+          <div class="kv-list">
+            <div class="kv-box">
+              <div class="kv-label">STATUS TOMBOL</div>
+              <div class="kv-data" id="bellPressedText">IDLE</div>
+            </div>
+            <div class="kv-box">
+              <div class="kv-label">BEL TERAKHIR</div>
+              <div class="kv-data" id="bellLastTime">-</div>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button onclick="ackDoorbell()">RESET STATUS BEL</button>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>ENDPOINT: POST /api/doorbell</span>
+          <span id="bellUpdated">LAST SYNC: -</span>
+        </div>
+      </section>
+
+      <!-- 4. SMART THERMOSTAT (NO. 6) -->
+      <section class="card col-6">
+        <div>
+          <div class="card-header">
+            <div>
+              <div class="card-id">MODUL 06 // SIMULATOR 2 (DHT + OLED + FAN GPIO 16)</div>
+              <div class="card-title">Smart Thermostat & Cooling</div>
+            </div>
+            <span class="badge badge-neutral" id="fanBadge">FAN: OFF</span>
+          </div>
+
+          <div class="kv-list">
+            <div class="kv-box">
+              <div class="kv-label">SUHU RUANGAN (DHT)</div>
+              <div class="metric-row" style="margin:4px 0 0;">
+                <span class="metric-val" id="tempVal">28.5</span>
+                <span class="metric-unit">°C</span>
+              </div>
+            </div>
+            <div class="kv-box">
+              <div class="kv-label">KELEMBAPAN UDARA</div>
+              <div class="metric-row" style="margin:4px 0 0;">
+                <span class="metric-val" id="humVal">65</span>
+                <span class="metric-unit">% RH</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn-primary" onclick="setFan('ON')">NYALAKAN KIPAS (ON)</button>
+            <button onclick="setFan('OFF')">MATIKAN KIPAS (OFF)</button>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>ENDPOINT: POST /api/thermostat</span>
+          <span id="thermoUpdated">LAST SYNC: -</span>
+        </div>
+      </section>
+
+      <!-- 5. WATER MONITOR (NO. 7) -->
+      <section class="card col-6">
+        <div>
+          <div class="card-header">
+            <div>
+              <div class="card-id">MODUL 07 // SIMULATOR 2 (ADC1 GPIO 34)</div>
+              <div class="card-title">Water Tank Level Monitor</div>
+            </div>
+            <span class="badge badge-green" id="waterCatBadge">NORMAL</span>
+          </div>
+
+          <div class="metric-row" style="margin-bottom:4px;">
+            <span class="metric-val" id="waterLevelVal">50</span>
+            <span class="metric-unit">% KAPASITAS WADAH</span>
+          </div>
+
+          <div class="bar-track">
+            <div class="bar-fill" id="waterBar" style="width: 50%;"></div>
+          </div>
+
+          <div style="font-size:12px; color:var(--text-muted); font-family:var(--mono);" id="waterNotice">
+            Status ketinggian air berada pada batas aman.
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>ENDPOINT: POST /api/water</span>
+          <span id="waterUpdated">LAST SYNC: -</span>
+        </div>
+      </section>
+
+      <!-- 6. SMART SECURITY CAMERA (NO. 3) -->
+      <section class="card col-6">
+        <div>
+          <div class="card-header">
+            <div>
+              <div class="card-id">MODUL 03 // ESP32-CAM OV2640 STREAM</div>
+              <div class="card-title">Smart Security Camera</div>
+            </div>
+            <span class="badge badge-neutral">HTTP MJPEG</span>
+          </div>
+
+          <div class="cam-viewport" id="camBox">
+            <div class="cam-placeholder" id="camPlaceholder">
+              [NO VIDEO STREAM CONNECTED]<br>
+              Masukkan IP Stream ESP32-CAM (contoh: http://192.168.1.50:81/stream) di bawah.
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="camUrlInput" placeholder="http://192.168.x.x:81/stream" />
+            <button onclick="saveCamUrl()">SET STREAM</button>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>MODUL KAMERA TERPISAH</span>
+          <span>PORT 80 / 81</span>
+        </div>
+      </section>
+
+      <!-- 7. SYSTEM LOG & SIMULATOR TESTBENCH (NO. 8) -->
+      <section class="card col-6">
+        <div>
+          <div class="card-header">
+            <div>
+              <div class="card-id">MODUL 08 // SMART HOME HUB LOGS & DIAGNOSTIC</div>
+              <div class="card-title">Real-Time Telemetry Log & Quick Tester</div>
+            </div>
+            <span class="badge badge-green">HUB ONLINE</span>
+          </div>
+
+          <div class="log-box" id="logContainer"></div>
+
+          <div style="margin-top:12px;">
+            <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); margin-bottom:6px;">
+              UJI SIMULASI PAKET ESP32 (TANPA WOKWI):
+            </div>
+            <div class="btn-row">
+              <button onclick="simRfidValid()">SIMULASI KARTU VALID</button>
+              <button class="btn-danger" onclick="simRfidInvalid()">SIMULASI KARTU DITOLAK</button>
+              <button onclick="simBell()">SIMULASI TEKAN BEL</button>
+              <button onclick="simWaterFull()">SIMULASI AIR PENUH</button>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>ENDPOINT STATE: GET /api/state</span>
+          <span>CORS: ENABLED (*)</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    async function fetchState() {
+      try {
+        const res = await fetch('/api/state');
+        const data = await res.json();
+        renderDashboard(data);
+        document.getElementById('connDot').style.background = 'var(--accent-green)';
+      } catch (err) {
+        document.getElementById('connDot').style.background = 'var(--accent-red)';
+      }
+    }
+
+    function renderDashboard(data) {
+      document.getElementById('serverClock').innerText = new Date().toLocaleTimeString('id-ID', { hour12: false });
+
+      // 1. Lighting
+      const light = data.lighting;
+      if (document.activeElement !== document.getElementById('lampSlider')) {
+        document.getElementById('lampSlider').value = light.intensity;
+        document.getElementById('lampIntensityVal').innerText = light.intensity;
+      }
+      const lampBadge = document.getElementById('lampBadge');
+      lampBadge.innerText = `${light.status} (${light.intensity}%)`;
+      lampBadge.className = 'badge ' + (light.status === 'ON' ? 'badge-amber' : 'badge-neutral');
+      document.getElementById('lampUpdated').innerText = `SYNC: ${light.updated_at}`;
+
+      // 2. Doorlock
+      const door = data.doorlock;
+      document.getElementById('doorLockStatus').innerText = door.lock_status;
+      document.getElementById('doorLastUid').innerText = door.last_uid;
+      document.getElementById('doorUpdated').innerText = `SYNC: ${door.updated_at}`;
+      const doorBadge = document.getElementById('doorAlertBadge');
+      doorBadge.innerText = door.access_alert;
+      doorBadge.className = 'badge ' + (door.access_alert === 'DITOLAK' ? 'badge-red' : 'badge-green');
+
+      // 3. Doorbell
+      const bell = data.doorbell;
+      document.getElementById('bellPressedText').innerText = bell.bell_pressed ? 'RINGING!' : 'IDLE';
+      document.getElementById('bellLastTime').innerText = bell.last_ring_time;
+      document.getElementById('bellUpdated').innerText = `SYNC: ${bell.updated_at}`;
+      const bellBadge = document.getElementById('bellStateBadge');
+      bellBadge.innerText = bell.bell_pressed ? 'VISITOR ALERT' : 'STANDBY';
+      bellBadge.className = 'badge ' + (bell.bell_pressed ? 'badge-amber' : 'badge-neutral');
+      document.getElementById('doorbellBanner').className = bell.bell_pressed ? 'doorbell-banner active' : 'doorbell-banner';
+
+      // 4. Thermostat
+      const th = data.thermostat;
+      document.getElementById('tempVal').innerText = Number(th.temperature).toFixed(1);
+      document.getElementById('humVal').innerText = Number(th.humidity).toFixed(0);
+      document.getElementById('thermoUpdated').innerText = `SYNC: ${th.updated_at}`;
+      const fanBadge = document.getElementById('fanBadge');
+      fanBadge.innerText = `FAN: ${th.fan_status}`;
+      fanBadge.className = 'badge ' + (th.fan_status === 'ON' ? 'badge-green' : 'badge-neutral');
+
+      // 5. Water
+      const wt = data.water;
+      document.getElementById('waterLevelVal').innerText = wt.level_value;
+      document.getElementById('waterBar').style.width = `${Math.min(100, Math.max(0, wt.level_value))}%`;
+      document.getElementById('waterUpdated').innerText = `SYNC: ${wt.updated_at}`;
+      const waterBadge = document.getElementById('waterCatBadge');
+      waterBadge.innerText = wt.category;
+      if (wt.category === 'PENUH' || wt.category === 'RENDAH') {
+        waterBadge.className = 'badge badge-amber';
+        document.getElementById('waterNotice').innerText = `PERINGATAN: Kondisi air saat ini ${wt.category}!`;
+      } else {
+        waterBadge.className = 'badge badge-green';
+        document.getElementById('waterNotice').innerText = 'Status ketinggian air berada pada batas aman.';
+      }
+
+      // 6. Logs
+      const logBox = document.getElementById('logContainer');
+      logBox.innerHTML = (data.logs || []).map(item => {
+        let color = '#7d8590';
+        if (item.type === 'danger') color = '#ff7b72';
+        if (item.type === 'warning') color = '#e3b341';
+        if (item.type === 'success') color = '#3fb950';
+        if (item.type === 'control') color = '#58a6ff';
+        return `<div class="log-entry">
+          <span class="log-time">[${item.time}]</span>
+          <span class="log-mod" style="color:${color}">${item.module}</span>
+          <span>${item.message}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ACTIONS
+    async function setLightingIntensity(val) {
+      await fetch('/api/lighting/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intensity: Number(val), status: Number(val) > 0 ? 'ON' : 'OFF' })
+      });
+      fetchState();
+    }
+
+    async function setLightingPreset(val) {
+      document.getElementById('lampSlider').value = val;
+      document.getElementById('lampIntensityVal').innerText = val;
+      await setLightingIntensity(val);
+    }
+
+    async function overrideDoor(lock_status) {
+      await fetch('/api/doorlock/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lock_status })
+      });
+      fetchState();
+    }
+
+    async function ackDoorbell() {
+      await fetch('/api/doorbell/ack', { method: 'POST' });
+      fetchState();
+    }
+
+    async function setFan(fan_status) {
+      await fetch('/api/thermostat/fan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fan_status })
+      });
+      fetchState();
+    }
+
+    function saveCamUrl() {
+      const url = document.getElementById('camUrlInput').value.trim();
+      const box = document.getElementById('camBox');
+      if (url) {
+        box.innerHTML = `<img src="${url}" alt="ESP32-CAM Stream" onerror="this.outerHTML='<div class=cam-placeholder>Gagal memuat stream dari ${url}</div>'" />`;
+      }
+    }
+
+    // FUNGSI QUICK TEST SIMULATOR
+    async function simRfidValid() {
+      await fetch('/api/doorlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_uid: '31C1BA75', lock_status: 'UNLOCKED', access_alert: 'DIIZINKAN' })
+      });
+      fetchState();
+    }
+
+    async function simRfidInvalid() {
+      await fetch('/api/doorlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ last_uid: '99FF0012', lock_status: 'LOCKED', access_alert: 'DITOLAK' })
+      });
+      fetchState();
+    }
+
+    async function simBell() {
+      await fetch('/api/doorbell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bell_pressed: true })
+      });
+      fetchState();
+    }
+
+    async function simWaterFull() {
+      await fetch('/api/water', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ level_value: 95, category: 'PENUH' })
+      });
+      fetchState();
+    }
+
+    setInterval(fetchState, 1500);
+    fetchState();
+  </script>
+</body>
+</html>
