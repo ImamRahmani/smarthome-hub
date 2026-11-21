@@ -24,13 +24,14 @@ CREATE TABLE IF NOT EXISTS telemetry_logs (
   recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Seed data awal agar endpoint /api/* tidak crash (HTTP 500) saat start pertama
+-- Seed data awal (sinkron dengan node1.4.ino, ESP32-CAM, dan dashboard)
 INSERT IGNORE INTO device_states (device_id, state_json) VALUES
-('lighting',   '{"status":"OFF","intensity":0,"updated_at":"-"}'),
-('doorlock',   '{"lock_status":"LOCKED","last_uid":"-","access_alert":"AMAN","updated_at":"-"}'),
+('lamps',      '[{"id":1,"status":"OFF","intensity":0,"updated_at":"-"},{"id":2,"status":"OFF","intensity":0,"updated_at":"-"},{"id":3,"status":"OFF","intensity":0,"updated_at":"-"}]'),
+('doors',      '[{"id":1,"name":"Pintu lab","lock_status":"LOCKED","last_uid":"-","access_alert":"AMAN","updated_at":"-"}]'),
 ('doorbell',   '{"bell_pressed":false,"last_ring_time":"-","updated_at":"-"}'),
-('thermostat', '{"temperature":25.0,"humidity":60,"fan_status":"OFF","updated_at":"-"}'),
-('water',      '{"level_value":85,"category":"AMAN","updated_at":"-"}');
+('thermostat', '{"temperature":25.0,"humidity":60,"fan_status":"OFF","mode":"AUTO","auto_on":32,"auto_off":30,"updated_at":"-"}'),
+('camera',     '{"active":false,"has_frame":false,"updated_at":"-"}'),
+('water',      '{"level_value":85,"category":"AMAN","critical":false,"updated_at":"-"}');
 
 INSERT INTO security_logs (event_type, identifier, status)
-VALUES ('SYSTEM', 'Docker Hub', 'Database & Server Siap');
+VALUES ('SISTEM', 'Server Smart IoT', 'Backend Terpadu & MySQL Siap');

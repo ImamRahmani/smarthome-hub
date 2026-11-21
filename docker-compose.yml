@@ -38,5 +38,18 @@ services:
     ports:
       - "${APP_PORT}:3000"
 
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: smarthome-pma
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+    ports:
+      - "8080:80"
+
 volumes:
   db_data:
