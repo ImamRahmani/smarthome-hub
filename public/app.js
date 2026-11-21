@@ -1,70 +1,114 @@
 /**
- * NexHome — Smart Living, Simplified
- * Client-side Controller & Real-Time Sync (app.js)
+ * NexHome — Smart IoT Lab Controller (app.js)
+ * Sinkron dengan server.js terpadu (3 Lampu PWM, RFID Pintu Lab, ESP32-CAM, Auto Thermostat)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // --- Global State Cache ---
+  // --- Global State ---
   let systemState = {
-    lighting: { status: 'ON', intensity: 70 },
-    doorlock: { lock_status: 'LOCKED', access_alert: 'AMAN', last_uid: '-' },
-    doorbell: { bell_pressed: false, last_ring_time: '-' },
-    thermostat: { temperature: 22.5, humidity: 62, fan_status: 'ON' },
-    water: { level_value: 85, category: 'AMAN' },
+    lamps: [
+      { id: 1, status: 'OFF', intensity: 0, updated_at: '-' },
+      { id: 2, status: 'OFF', intensity: 0, updated_at: '-' },
+      { id: 3, status: 'OFF', intensity: 0, updated_at: '-' }
+    ],
+    doors: [
+      { id: 1, name: 'Pintu lab', lock_status: 'LOCKED', last_uid: '-', access_alert: 'AMAN', updated_at: '-' }
+    ],
+    doorbell: { bell_pressed: false, last_ring_time: '-', updated_at: '-' },
+    thermostat: { temperature: 25.0, humidity: 60, fan_status: 'OFF', mode: 'AUTO', auto_on: 32, auto_off: 30, updated_at: '-' },
+    camera: { active: false, has_frame: false, updated_at: '-' },
     logs: []
   };
 
-  let isConnected = true;
-  let chartMode = 'power'; // 'power' or 'telemetry'
+  let selectedLampId = 1;
+  let isDraggingSlider = false;
+  let dragIntensity = 0;
+  let chartMode = 'telemetry'; // 'telemetry' atau 'power'
   let powerChart = null;
+  let arOverlayVisible = true;
+  let camStreamTimer = null;
+  let camFetching = false;
 
-  // --- DOM Elements ---
-  // Connection & Header
+  // --- DOM References ---
   const connDot = document.getElementById('connDot');
   const connStatusText = document.getElementById('connStatusText');
   const liveClock = document.getElementById('liveClock');
   const notifBadge = document.getElementById('notifBadge');
   const globalSearch = document.getElementById('globalSearch');
 
-  // Widgets: Weather & Environment
+  // Weather & Humidity Widget
+  const weatherDate = document.getElementById('weatherDate');
   const ambientTemp = document.getElementById('ambientTemp');
+  const thermalConditionLabel = document.getElementById('thermalConditionLabel');
   const weatherHumidity = document.getElementById('weatherHumidity');
-  const aqiVal = document.getElementById('aqiVal');
-  const aqiProgressArc = document.getElementById('aqiProgressArc');
+  const activeLampsSummary = document.getElementById('activeLampsSummary');
+  const securitySummaryVal = document.getElementById('securitySummaryVal');
+  const humidityStatusBadge = document.getElementById('humidityStatusBadge');
+  const humidityGaugeArc = document.getElementById('humidityGaugeArc');
+  const humidityGaugeVal = document.getElementById('humidityGaugeVal');
+  const thermoLastSync = document.getElementById('thermoLastSync');
+  const lastRfidUidBox = document.getElementById('lastRfidUidBox');
+  const lastDoorbellNote = document.getElementById('lastDoorbellNote');
 
-  // Widgets: Thermostat Dial
+  // Thermostat Dial
+  const ecoModePill = document.getElementById('ecoModePill');
+  const thermoModeBadgeText = document.getElementById('thermoModeBadgeText');
+  const thermoProgressArc = document.getElementById('thermoProgressArc');
+  const thermoThumb = document.getElementById('thermoThumb');
   const thermoCurrentTemp = document.getElementById('thermoCurrentTemp');
-  const thermoFanStatusChip = document.getElementById('thermoFanStatusChip');
   const thermoModeLabel = document.getElementById('thermoModeLabel');
+  const thermoThresholdText = document.getElementById('thermoThresholdText');
   const btnTempMinus = document.getElementById('btnTempMinus');
   const btnTempPlus = document.getElementById('btnTempPlus');
 
-  // Hero Camera & Vertical Slider
+  // Hero Camera & AR Nodes
+  const cardCameraVisualizer = document.getElementById('cardCameraVisualizer');
+  const esp32CamFeed = document.getElementById('esp32CamFeed');
+  const iotNodeStage = document.getElementById('iotNodeStage');
+  const btnToggleArOverlay = document.getElementById('btnToggleArOverlay');
+  const camLiveDot = document.getElementById('camLiveDot');
+  const camLiveLabel = document.getElementById('camLiveLabel');
+  const btnCamPower = document.getElementById('btnCamPower');
+  const btnCamPowerLabel = document.getElementById('btnCamPowerLabel');
+  const btnCamFullscreen = document.getElementById('btnCamFullscreen');
+
+  const nodeLight = document.getElementById('nodeLight');
+  const nodeLightLabel = document.getElementById('nodeLightLabel');
+  const nodeDoor = document.getElementById('nodeDoor');
+  const nodeDoorLabel = document.getElementById('nodeDoorLabel');
+  const nodeCam = document.getElementById('nodeCam');
+  const nodeCamLabel = document.getElementById('nodeCamLabel');
+  const nodeAC = document.getElementById('nodeAC');
+  const nodeACLabel = document.getElementById('nodeACLabel');
+
+  // Vertical Slider (3 Lamps)
   const sliderTrack = document.getElementById('sliderTrack');
   const sliderFillBar = document.getElementById('sliderFillBar');
+  const sliderThumb = document.getElementById('sliderThumb');
   const sliderPctLabel = document.getElementById('sliderPctLabel');
   const btnSliderPower = document.getElementById('btnSliderPower');
-  const btnCamFullscreen = document.getElementById('btnCamFullscreen');
-  const cardCameraVisualizer = document.getElementById('cardCameraVisualizer');
 
-  // Quick Device Cards & Toggles
+  // 2x2 Quick Device Cards
   const devCardLighting = document.getElementById('devCardLighting');
   const switchLighting = document.getElementById('switchLighting');
   const lightingStatusText = document.getElementById('lightingStatusText');
 
   const devCardAC = document.getElementById('devCardAC');
   const switchAC = document.getElementById('switchAC');
+  const acModeSubtitle = document.getElementById('acModeSubtitle');
   const acStatusText = document.getElementById('acStatusText');
 
   const devCardDoorlock = document.getElementById('devCardDoorlock');
   const switchDoorlock = document.getElementById('switchDoorlock');
+  const doorCardTitle = document.getElementById('doorCardTitle');
+  const doorlockUidBadge = document.getElementById('doorlockUidBadge');
   const doorlockStatusText = document.getElementById('doorlockStatusText');
 
-  const devCardWater = document.getElementById('devCardWater');
-  const waterLevelBadge = document.getElementById('waterLevelBadge');
-  const waterStatusText = document.getElementById('waterStatusText');
+  const devCardCamera = document.getElementById('devCardCamera');
+  const switchCamera = document.getElementById('switchCamera');
+  const cameraStatusText = document.getElementById('cameraStatusText');
 
-  // Power & Chart
+  // Chart
   const btnModePower = document.getElementById('btnModePower');
   const btnModeTelemetry = document.getElementById('btnModeTelemetry');
   const powerPrimaryMetric = document.getElementById('powerPrimaryMetric');
@@ -72,9 +116,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const powerTrendBadge = document.getElementById('powerTrendBadge');
   const powerChartCanvas = document.getElementById('powerChartCanvas');
 
-  // Drawers & Modals
+  // Drawers, Modals & Banner
   const btnNotifications = document.getElementById('btnNotifications');
   const navSecurityBtn = document.getElementById('navSecurityBtn');
+  const navSimBtn = document.getElementById('navSimBtn');
   const logsDrawerBackdrop = document.getElementById('logsDrawerBackdrop');
   const btnCloseDrawer = document.getElementById('btnCloseDrawer');
   const btnRefreshLogs = document.getElementById('btnRefreshLogs');
@@ -84,42 +129,66 @@ document.addEventListener('DOMContentLoaded', () => {
   const simModalBackdrop = document.getElementById('simModalBackdrop');
   const btnCloseSimulator = document.getElementById('btnCloseSimulator');
 
-  // Doorbell Alert Banner
   const doorbellAlertBanner = document.getElementById('doorbellAlertBanner');
   const doorbellRingTime = document.getElementById('doorbellRingTime');
+  const btnDoorbellUnlock = document.getElementById('btnDoorbellUnlock');
   const btnAckDoorbell = document.getElementById('btnAckDoorbell');
 
-  // Simulator Inputs
+  // Simulator Controls
   const simRfidUid = document.getElementById('simRfidUid');
   const simRfidAccess = document.getElementById('simRfidAccess');
   const btnSimTapRfid = document.getElementById('btnSimTapRfid');
   const btnSimRingBell = document.getElementById('btnSimRingBell');
+  const btnSimSendCamFrame = document.getElementById('btnSimSendCamFrame');
   const simTempInp = document.getElementById('simTempInp');
   const simHumInp = document.getElementById('simHumInp');
   const btnSimSendDht = document.getElementById('btnSimSendDht');
-  const simWaterRange = document.getElementById('simWaterRange');
-  const simWaterValLabel = document.getElementById('simWaterValLabel');
-  const simWaterCat = document.getElementById('simWaterCat');
-  const btnSimSendWater = document.getElementById('btnSimSendWater');
 
-  // --- Clock Updater ---
+  // --- Helpers ---
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function getSelectedLamp() {
+    const lamps = systemState.lamps || [];
+    return lamps.find(l => l.id === selectedLampId) || lamps[0] || { id: selectedLampId, status: 'OFF', intensity: 0 };
+  }
+
+  function getMainDoor() {
+    const doors = systemState.doors || [];
+    return doors[0] || systemState.doorlock || { id: 1, name: 'Pintu lab', lock_status: 'LOCKED', last_uid: '-', access_alert: 'AMAN' };
+  }
+
+  // --- Clock & Date Updater (WITA) ---
   function updateClock() {
     const now = new Date();
     const timeStr = now.toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Makassar' });
+    const dateStr = now.toLocaleDateString('id-ID', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Makassar'
+    });
     if (liveClock) liveClock.textContent = `${timeStr} WITA`;
+    if (weatherDate) weatherDate.textContent = dateStr;
   }
   setInterval(updateClock, 1000);
   updateClock();
 
-  // --- API: Fetch State ---
+  // --- API Polling ---
   async function fetchSystemState() {
     try {
-      const res = await fetch('/api/state');
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const res = await fetch('/api/state', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       systemState = data;
       renderUI(data);
       setConnectionStatus(true);
+      if (chartMode === 'telemetry') {
+        loadTelemetryChart();
+      }
     } catch (err) {
       console.warn('Backend polling warning:', err.message);
       setConnectionStatus(false);
@@ -127,113 +196,220 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setConnectionStatus(online) {
-    isConnected = online;
-    if (connDot && connStatusText) {
-      if (online) {
-        connDot.className = 'status-indicator-dot online';
-        connStatusText.textContent = 'MySQL Connected';
-      } else {
-        connDot.className = 'status-indicator-dot offline';
-        connStatusText.textContent = 'Offline / Standalone';
+    if (!connDot || !connStatusText) return;
+    connDot.className = online ? 'status-indicator-dot online' : 'status-indicator-dot offline';
+    connStatusText.textContent = online ? 'MySQL Connected' : 'Offline / Terputus';
+  }
+
+  // --- Dynamic SVG Arc Helpers ---
+  function updateThermoArc(temp) {
+    if (!thermoProgressArc || !thermoThumb) return;
+    const totalLen = thermoProgressArc.getTotalLength();
+    const minT = 16;
+    const maxT = 42;
+    const ratio = Math.max(0, Math.min(1, (temp - minT) / (maxT - minT)));
+
+    thermoProgressArc.style.strokeDasharray = `${totalLen}`;
+    thermoProgressArc.style.strokeDashoffset = `${totalLen * (1 - ratio)}`;
+
+    const pt = thermoProgressArc.getPointAtLength(totalLen * ratio);
+    thermoThumb.setAttribute('cx', pt.x.toFixed(1));
+    thermoThumb.setAttribute('cy', pt.y.toFixed(1));
+  }
+
+  function updateHumidityGauge(hum) {
+    if (!humidityGaugeArc) return;
+    const totalLen = humidityGaugeArc.getTotalLength();
+    const ratio = Math.max(0, Math.min(1, hum / 100));
+    humidityGaugeArc.style.strokeDasharray = `${totalLen}`;
+    humidityGaugeArc.style.strokeDashoffset = `${totalLen * (1 - ratio)}`;
+  }
+
+  // --- ESP32-CAM Live Frame Streamer ---
+  function syncCameraStream(cam) {
+    const isActive = Boolean(cam?.active);
+    const hasFrame = Boolean(cam?.has_frame);
+
+    if (!isActive) {
+      if (camStreamTimer) {
+        clearTimeout(camStreamTimer);
+        camStreamTimer = null;
       }
+      if (esp32CamFeed) {
+        esp32CamFeed.classList.remove('visible');
+        esp32CamFeed.removeAttribute('src');
+      }
+      if (camLiveDot) camLiveDot.className = 'live-dot-pulse off';
+      if (camLiveLabel) camLiveLabel.textContent = 'Kamera OFF';
+      if (btnCamPowerLabel) btnCamPowerLabel.textContent = 'Nyalakan Kamera';
+      return;
+    }
+
+    if (btnCamPowerLabel) btnCamPowerLabel.textContent = 'Matikan Kamera';
+    if (hasFrame) {
+      if (camLiveDot) camLiveDot.className = 'live-dot-pulse';
+      if (camLiveLabel) camLiveLabel.textContent = 'ESP32-CAM LIVE';
+    } else {
+      if (camLiveDot) camLiveDot.className = 'live-dot-pulse standby';
+      if (camLiveLabel) camLiveLabel.textContent = 'Kamera ON (Menunggu Frame)';
+    }
+
+    if (!camStreamTimer && !camFetching) {
+      pollCameraFrame();
     }
   }
 
-  // --- UI Render Function ---
+  function pollCameraFrame() {
+    if (!systemState.camera?.active) return;
+    camFetching = true;
+
+    const nextImg = new Image();
+    nextImg.onload = () => {
+      camFetching = false;
+      if (systemState.camera?.active && esp32CamFeed) {
+        esp32CamFeed.src = nextImg.src;
+        esp32CamFeed.classList.add('visible');
+        if (camLiveDot) camLiveDot.className = 'live-dot-pulse';
+        if (camLiveLabel) camLiveLabel.textContent = 'ESP32-CAM LIVE';
+      }
+      camStreamTimer = setTimeout(pollCameraFrame, 450);
+    };
+    nextImg.onerror = () => {
+      camFetching = false;
+      camStreamTimer = setTimeout(pollCameraFrame, 900);
+    };
+    nextImg.src = `/api/camera/frame?t=${Date.now()}`;
+  }
+
+  // --- Main UI Render ---
   function renderUI(data) {
     if (!data) return;
 
-    // 1. Lighting
-    if (data.lighting) {
-      const isLightingOn = data.lighting.status === 'ON';
-      const intensity = data.lighting.intensity !== undefined ? Number(data.lighting.intensity) : 70;
+    // 1. Smart Lamps (3 Channels)
+    const lamps = Array.isArray(data.lamps) ? data.lamps : [];
+    const activeLampCount = lamps.filter(l => l.status === 'ON').length;
+    if (activeLampsSummary) activeLampsSummary.textContent = `${activeLampCount}/3 ON`;
 
-      if (switchLighting) switchLighting.checked = isLightingOn;
-      if (devCardLighting) {
-        devCardLighting.classList.toggle('active', isLightingOn);
-      }
-      if (lightingStatusText) {
-        lightingStatusText.textContent = isLightingOn ? `ON • ${intensity}% PWM` : 'OFF • Terputus';
-      }
+    lamps.forEach(l => {
+      const dot = document.getElementById(`lampDot${l.id}`);
+      if (dot) dot.classList.toggle('on', l.status === 'ON');
+    });
 
-      // Slider Sync
-      if (sliderPctLabel) sliderPctLabel.textContent = `${intensity}%`;
-      if (sliderFillBar) sliderFillBar.style.height = `${intensity}%`;
-      if (btnSliderPower) {
-        btnSliderPower.classList.toggle('on', isLightingOn);
-      }
+    const curLamp = getSelectedLamp();
+    const isLampOn = curLamp.status === 'ON';
+    const intensity = isDraggingSlider ? dragIntensity : Number(curLamp.intensity ?? 0);
+
+    if (switchLighting) switchLighting.checked = isLampOn;
+    if (devCardLighting) devCardLighting.classList.toggle('active', isLampOn);
+    if (lightingStatusText) {
+      lightingStatusText.textContent = isLampOn
+        ? `L${curLamp.id}: ON • ${intensity}% PWM`
+        : `L${curLamp.id}: OFF • 0% PWM`;
+    }
+    if (nodeLight) nodeLight.classList.toggle('node-active', isLampOn);
+    if (nodeLightLabel) nodeLightLabel.textContent = `Lampu ${curLamp.id}`;
+
+    // Sync Slider (jangan timpa saat user sedang drag)
+    if (!isDraggingSlider) {
+      updateSliderVisual(intensity, isLampOn);
     }
 
-    // 2. Thermostat & AC
+    // 2. Thermostat & Auto/Manual Fan
     if (data.thermostat) {
-      const temp = data.thermostat.temperature !== undefined ? Number(data.thermostat.temperature).toFixed(1) : '22.5';
-      const hum = data.thermostat.humidity !== undefined ? `${data.thermostat.humidity}%` : '62%';
+      const tempVal = Number(data.thermostat.temperature ?? 0);
+      const humVal = Number(data.thermostat.humidity ?? 0);
       const isFanOn = data.thermostat.fan_status === 'ON';
+      const mode = data.thermostat.mode || 'AUTO';
+      const autoOn = Number(data.thermostat.auto_on ?? 32);
+      const autoOff = Number(data.thermostat.auto_off ?? 30);
 
-      if (ambientTemp) ambientTemp.textContent = Math.round(temp);
-      if (weatherHumidity) weatherHumidity.textContent = hum;
-
-      if (thermoCurrentTemp) {
-        thermoCurrentTemp.innerHTML = `${temp}<small>°C</small>`;
+      if (ambientTemp) ambientTemp.textContent = tempVal.toFixed(1);
+      if (weatherHumidity) weatherHumidity.textContent = `${Math.round(humVal)}%`;
+      if (thermalConditionLabel) {
+        thermalConditionLabel.textContent = tempVal > autoOn ? 'Panas (Kipas Aktif)' : (tempVal < 22 ? 'Sejuk' : 'Normal');
       }
 
-      if (thermoModeLabel) {
-        thermoModeLabel.textContent = isFanOn ? 'Cooling Active' : 'Cooling Standby';
+      if (humidityGaugeVal) humidityGaugeVal.textContent = `${Math.round(humVal)}%`;
+      if (humidityStatusBadge) {
+        humidityStatusBadge.textContent = humVal > 75 ? 'Lembap' : (humVal < 40 ? 'Kering' : 'Ideal');
+      }
+      if (thermoLastSync) thermoLastSync.textContent = `Sync: ${data.thermostat.updated_at || '-'}`;
+      updateHumidityGauge(humVal);
+
+      if (thermoCurrentTemp) thermoCurrentTemp.innerHTML = `${tempVal.toFixed(1)}<small>°C</small>`;
+      if (thermoModeLabel) thermoModeLabel.textContent = isFanOn ? 'Kipas Menyala' : 'Kipas Standby';
+      if (thermoThresholdText) thermoThresholdText.textContent = `Auto ON > ${autoOn}°C • OFF < ${autoOff}°C`;
+      updateThermoArc(tempVal);
+
+      if (ecoModePill && thermoModeBadgeText) {
+        ecoModePill.classList.toggle('manual', mode === 'MANUAL');
+        thermoModeBadgeText.textContent = mode === 'AUTO' ? 'Mode AUTO' : 'MANUAL (Klik Auto)';
       }
 
       if (switchAC) switchAC.checked = isFanOn;
-      if (devCardAC) {
-        devCardAC.classList.toggle('active', isFanOn);
-      }
-      if (acStatusText) {
-        acStatusText.textContent = isFanOn ? `${temp}°C | Cooling ON` : `${temp}°C | Fan OFF`;
-      }
+      if (devCardAC) devCardAC.classList.toggle('active', isFanOn);
+      if (acModeSubtitle) acModeSubtitle.textContent = `Mode: ${mode} (> ${autoOn}°C)`;
+      if (acStatusText) acStatusText.textContent = `${tempVal.toFixed(1)}°C | Fan ${isFanOn ? 'ON' : 'OFF'}`;
+      if (nodeAC) nodeAC.classList.toggle('node-active', isFanOn);
+      if (nodeACLabel) nodeACLabel.textContent = isFanOn ? 'Kipas ON' : 'Kipas OFF';
     }
 
-    // 3. Smart Door Lock
-    if (data.doorlock) {
-      const isLocked = data.doorlock.lock_status === 'LOCKED';
-      const alert = data.doorlock.access_alert || 'AMAN';
+    // 3. Smart Door Lock (Pintu Lab)
+    const door = getMainDoor();
+    const isLocked = door.lock_status === 'LOCKED';
+    const alertStatus = door.access_alert || 'AMAN';
+    const lastUid = door.last_uid || '-';
 
-      if (switchDoorlock) switchDoorlock.checked = isLocked;
-      if (devCardDoorlock) {
-        devCardDoorlock.classList.toggle('active', isLocked);
-      }
-      if (doorlockStatusText) {
-        doorlockStatusText.textContent = isLocked ? `LOCKED • ${alert}` : `UNLOCKED • ${alert}`;
-      }
+    if (doorCardTitle) doorCardTitle.textContent = door.name || 'Pintu Lab';
+    if (doorlockUidBadge) doorlockUidBadge.textContent = `UID: ${lastUid}`;
+    if (lastRfidUidBox) lastRfidUidBox.textContent = lastUid;
+    if (switchDoorlock) switchDoorlock.checked = isLocked;
+    if (devCardDoorlock) devCardDoorlock.classList.toggle('active', isLocked);
+    if (doorlockStatusText) {
+      doorlockStatusText.textContent = isLocked ? `LOCKED • ${alertStatus}` : `UNLOCKED • ${alertStatus}`;
     }
+    if (securitySummaryVal) securitySummaryVal.textContent = isLocked ? alertStatus : 'TERBUKA';
+    if (nodeDoor) nodeDoor.classList.toggle('node-active', !isLocked);
+    if (nodeDoorLabel) nodeDoorLabel.textContent = isLocked ? 'Terkunci' : 'Terbuka';
 
-    // 4. Water Level
-    if (data.water) {
-      const level = data.water.level_value !== undefined ? data.water.level_value : 85;
-      const cat = data.water.category || 'AMAN';
-
-      if (waterLevelBadge) waterLevelBadge.textContent = `${level}%`;
-      if (waterStatusText) {
-        waterStatusText.textContent = `Level: ${level}% • ${cat}`;
-      }
+    // 4. ESP32-CAM Card & Stream
+    const cam = data.camera || { active: false, has_frame: false };
+    const isCamActive = Boolean(cam.active);
+    if (switchCamera) switchCamera.checked = isCamActive;
+    if (devCardCamera) devCardCamera.classList.toggle('active', isCamActive);
+    if (cameraStatusText) {
+      cameraStatusText.textContent = isCamActive
+        ? (cam.has_frame ? 'ON • Live Streaming' : 'ON • Menunggu Frame')
+        : 'OFF • Standby';
     }
+    if (nodeCam) nodeCam.classList.toggle('node-active', isCamActive);
+    if (nodeCamLabel) nodeCamLabel.textContent = isCamActive ? 'Cam ON' : 'Cam OFF';
+    syncCameraStream(cam);
 
-    // 5. Doorbell Notification
+    // 5. Doorbell Alert Banner
     if (data.doorbell) {
       const isRinging = Boolean(data.doorbell.bell_pressed);
-      if (doorbellAlertBanner) {
-        doorbellAlertBanner.classList.toggle('active', isRinging);
-      }
-      if (doorbellRingTime) {
-        doorbellRingTime.textContent = data.doorbell.last_ring_time || 'Baru Saja';
-      }
+      if (doorbellAlertBanner) doorbellAlertBanner.classList.toggle('active', isRinging);
+      if (doorbellRingTime) doorbellRingTime.textContent = data.doorbell.last_ring_time || 'Baru Saja';
+      if (lastDoorbellNote) lastDoorbellNote.textContent = `Bel terakhir: ${data.doorbell.last_ring_time || '-'}`;
     }
 
-    // 6. Security Logs
-    if (data.logs && Array.isArray(data.logs)) {
-      if (notifBadge) notifBadge.textContent = Math.min(data.logs.length, 9);
+    // 6. Security Audit Logs
+    if (Array.isArray(data.logs)) {
+      if (notifBadge) notifBadge.textContent = data.logs.length > 9 ? '9+' : String(data.logs.length);
       renderLogsDrawer(data.logs);
     }
   }
 
-  // --- Render Logs Drawer ---
+  function updateSliderVisual(intensity, isOn) {
+    const pct = Math.max(0, Math.min(100, Number(intensity) || 0));
+    if (sliderPctLabel) sliderPctLabel.textContent = `${pct}%`;
+    if (sliderFillBar) sliderFillBar.style.height = `${pct}%`;
+    if (sliderThumb) sliderThumb.style.bottom = `${pct}%`;
+    if (btnSliderPower) btnSliderPower.classList.toggle('on', Boolean(isOn && pct > 0));
+  }
+
+  // --- Safe Logs Drawer Rendering (Anti-XSS) ---
   function renderLogsDrawer(logs) {
     if (!logsListContainer) return;
     if (!logs || logs.length === 0) {
@@ -241,68 +417,49 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const allowedTypes = new Set(['danger', 'warning', 'success', 'control']);
     logsListContainer.innerHTML = logs.map(log => {
-      const type = log.type || 'control';
+      const type = allowedTypes.has(log.type) ? log.type : 'control';
       return `
         <div class="log-item-card">
           <div class="log-info-group">
-            <span class="log-time">${log.time || '--:--'}</span>
-            <div class="log-msg"><strong>[${log.module || 'SYS'}]</strong> ${log.message || ''}</div>
+            <span class="log-time">${escapeHtml(log.time || '--:--')}</span>
+            <div class="log-msg"><strong>[${escapeHtml(log.module || 'SYS')}]</strong> ${escapeHtml(log.message || '')}</div>
           </div>
-          <span class="log-badge-tag ${type}">${type}</span>
+          <span class="log-badge-tag ${type}">${escapeHtml(type)}</span>
         </div>
       `;
     }).join('');
   }
 
-  // --- Chart.js: Power & Telemetry Analytics ---
-  function initPowerChart() {
+  // --- Chart.js: Dual-Line Telemetry & Power ---
+  function initChart() {
     if (!powerChartCanvas) return;
     const ctx = powerChartCanvas.getContext('2d');
-
-    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const dataValues = [4.2, 5.8, 6.1, 9.2, 5.0, 7.3, 6.8];
-
-    // Background colors: teal for regular days, bright orange for peak Thursday
-    const bgColors = dataValues.map((v, i) => i === 3 ? '#F97316' : '#2DD4BF');
-
     powerChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [{
-          data: dataValues,
-          backgroundColor: bgColors,
-          borderRadius: 8,
-          borderSkipped: false,
-          barPercentage: 0.55
-        }]
-      },
+      type: 'line',
+      data: { labels: [], datasets: [] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: { duration: 250 },
         plugins: {
           legend: { display: false },
           tooltip: {
             backgroundColor: '#1E293B',
             titleColor: '#CBD5E1',
             bodyColor: '#FFFFFF',
-            cornerRadius: 8,
-            callbacks: {
-              label: (ctx) => ` ${ctx.parsed.y} kWh`
-            }
+            cornerRadius: 8
           }
         },
         scales: {
           x: {
             grid: { display: false },
-            ticks: { color: '#64748B', font: { size: 10 } }
+            ticks: { color: '#64748B', font: { size: 10 }, maxTicksLimit: 7 }
           },
           y: {
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: { color: '#64748B', font: { size: 10 }, stepSize: 2.5 },
-            beginAtZero: true,
-            max: 10
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: '#64748B', font: { size: 10 } }
           }
         }
       }
@@ -312,43 +469,56 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadTelemetryChart() {
     if (!powerChart) return;
     try {
-      const res = await fetch('/api/history');
+      const res = await fetch('/api/history', { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load history');
       const rows = await res.json();
 
-      if (rows && rows.length > 0) {
-        const labels = rows.map(r => r.time);
-        const dataValues = rows.map(r => Number(r.metric_value));
+      const tempRows = rows.filter(r => r.metric_name === 'temperature').slice(-15);
+      const humRows = rows.filter(r => r.metric_name === 'humidity').slice(-15);
 
-        powerChart.config.type = 'line';
-        powerChart.data.labels = labels.slice(-15);
-        powerChart.data.datasets = [{
-          label: 'Telemetry Value',
-          data: dataValues.slice(-15),
-          borderColor: '#38BDF8',
-          backgroundColor: 'rgba(56, 189, 248, 0.12)',
+      const labels = (tempRows.length >= humRows.length ? tempRows : humRows).map(r => r.time);
+
+      powerChart.config.type = 'line';
+      powerChart.data.labels = labels.length ? labels : ['Belum ada data'];
+      powerChart.data.datasets = [
+        {
+          label: 'Suhu (°C)',
+          data: tempRows.map(r => Number(r.metric_value)),
+          borderColor: '#F97316',
+          backgroundColor: 'rgba(249, 115, 22, 0.14)',
           fill: true,
-          tension: 0.4,
-          pointRadius: 3,
-          pointBackgroundColor: '#38BDF8'
-        }];
-        powerChart.options.scales.y.max = undefined;
-        powerChart.update();
+          tension: 0.35,
+          pointRadius: 2.5
+        },
+        {
+          label: 'Kelembapan (%)',
+          data: humRows.map(r => Number(r.metric_value)),
+          borderColor: '#38BDF8',
+          backgroundColor: 'rgba(56, 189, 248, 0.10)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 2.5
+        }
+      ];
+      powerChart.options.scales.y.max = undefined;
+      powerChart.update('none');
 
-        if (powerPrimaryMetric) powerPrimaryMetric.textContent = rows[rows.length - 1].metric_value;
-        if (powerUnitMetric) powerUnitMetric.textContent = rows[rows.length - 1].metric_name;
-        if (powerTrendBadge) powerTrendBadge.innerHTML = '<span>Live Time-Series Log</span>';
-      }
+      const latestTemp = tempRows.length ? tempRows[tempRows.length - 1].metric_value : (systemState.thermostat?.temperature ?? 0);
+      const latestHum = humRows.length ? humRows[humRows.length - 1].metric_value : (systemState.thermostat?.humidity ?? 0);
+      if (powerPrimaryMetric) powerPrimaryMetric.textContent = Number(latestTemp).toFixed(1);
+      if (powerUnitMetric) powerUnitMetric.textContent = `°C / ${Math.round(latestHum)}% RH`;
+      if (powerTrendBadge) powerTrendBadge.innerHTML = '<span>Oranye: Suhu • Biru: Lembap</span>';
     } catch (err) {
-      console.warn('Telemetry chart fetch error:', err);
+      console.warn('Telemetry chart fetch error:', err.message);
     }
   }
 
-  function resetToPowerChart() {
+  function showPowerChart() {
     if (!powerChart) return;
     powerChart.config.type = 'bar';
     powerChart.data.labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     powerChart.data.datasets = [{
+      label: 'Estimasi (kWh)',
       data: [4.2, 5.8, 6.1, 9.2, 5.0, 7.3, 6.8],
       backgroundColor: ['#2DD4BF', '#2DD4BF', '#2DD4BF', '#F97316', '#2DD4BF', '#2DD4BF', '#2DD4BF'],
       borderRadius: 8,
@@ -360,292 +530,359 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (powerPrimaryMetric) powerPrimaryMetric.textContent = '6.8';
     if (powerUnitMetric) powerUnitMetric.textContent = 'kWh';
-    if (powerTrendBadge) {
-      powerTrendBadge.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;">
-          <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
-          <polyline points="17 18 23 18 23 12"></polyline>
-        </svg>
-        <span>18% vs last week</span>
-      `;
-    }
+    if (powerTrendBadge) powerTrendBadge.innerHTML = '<span>Estimasi Beban Mingguan</span>';
   }
 
-  // --- Controls Interaction ---
-  // 1. Lighting Control
-  async function sendLightingControl(status, intensity) {
-    try {
-      const payload = {};
-      if (status !== undefined) payload.status = status;
-      if (intensity !== undefined) payload.intensity = intensity;
-
-      await fetch('/api/lighting/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      fetchSystemState();
-    } catch (err) {
-      console.error('Failed to control lighting:', err);
-    }
+  // --- API Action Senders ---
+  async function sendLightingControl(id, status, intensity) {
+    const payload = { id };
+    if (status !== undefined) payload.status = status;
+    if (intensity !== undefined) payload.intensity = intensity;
+    await fetch('/api/lighting/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    fetchSystemState();
   }
 
+  async function sendFanControl(payload) {
+    await fetch('/api/thermostat/fan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    fetchSystemState();
+  }
+
+  async function sendDoorlockControl(lockStatus) {
+    await fetch('/api/doorlock/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ door: 1, lock_status: lockStatus })
+    });
+    fetchSystemState();
+  }
+
+  async function sendCameraControl(active) {
+    await fetch('/api/camera/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: Boolean(active) })
+    });
+    fetchSystemState();
+  }
+
+  // --- Select Active Lamp (Syncs Slider & Card Tabs) ---
+  function selectLamp(lampId) {
+    selectedLampId = Number(lampId);
+    document.querySelectorAll('[data-lamp-id]').forEach(btn => {
+      btn.classList.toggle('active', Number(btn.dataset.lampId) === selectedLampId);
+    });
+    renderUI(systemState);
+  }
+
+  document.querySelectorAll('[data-lamp-id]').forEach(btn => {
+    btn.addEventListener('click', () => selectLamp(btn.dataset.lampId));
+  });
+
+  // --- Lighting Controls + Vertical Drag Slider ---
   if (switchLighting) {
     switchLighting.addEventListener('change', (e) => {
-      const status = e.target.checked ? 'ON' : 'OFF';
-      sendLightingControl(status, undefined);
+      sendLightingControl(selectedLampId, e.target.checked ? 'ON' : 'OFF', undefined);
     });
-  }
-
-  // Vertical Slider Click / Drag
-  if (sliderTrack) {
-    function handleSliderTrack(e) {
-      const rect = sliderTrack.getBoundingClientRect();
-      const clickY = e.clientY - rect.top;
-      let pct = Math.round(((rect.height - clickY) / rect.height) * 100);
-      pct = Math.max(0, Math.min(100, pct));
-      sendLightingControl(pct > 0 ? 'ON' : 'OFF', pct);
-    }
-
-    sliderTrack.addEventListener('click', handleSliderTrack);
   }
 
   if (btnSliderPower) {
     btnSliderPower.addEventListener('click', () => {
-      const isCurrentlyOn = btnSliderPower.classList.contains('on');
-      sendLightingControl(isCurrentlyOn ? 'OFF' : 'ON', isCurrentlyOn ? 0 : 70);
+      const cur = getSelectedLamp();
+      const turningOn = cur.status !== 'ON';
+      sendLightingControl(selectedLampId, turningOn ? 'ON' : 'OFF', turningOn ? (cur.intensity || 100) : 0);
     });
   }
 
-  // 2. Thermostat AC / Fan Control
-  async function sendFanControl(fanStatus) {
-    try {
-      await fetch('/api/thermostat/fan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fan_status: fanStatus })
-      });
-      fetchSystemState();
-    } catch (err) {
-      console.error('Failed to control AC fan:', err);
-    }
+  if (sliderTrack) {
+    const calcPctFromPointer = (clientY) => {
+      const rect = sliderTrack.getBoundingClientRect();
+      const pct = Math.round(((rect.bottom - clientY) / rect.height) * 100);
+      return Math.max(0, Math.min(100, pct));
+    };
+
+    sliderTrack.addEventListener('pointerdown', (e) => {
+      isDraggingSlider = true;
+      sliderTrack.setPointerCapture(e.pointerId);
+      dragIntensity = calcPctFromPointer(e.clientY);
+      updateSliderVisual(dragIntensity, dragIntensity > 0);
+    });
+
+    sliderTrack.addEventListener('pointermove', (e) => {
+      if (!isDraggingSlider) return;
+      dragIntensity = calcPctFromPointer(e.clientY);
+      updateSliderVisual(dragIntensity, dragIntensity > 0);
+    });
+
+    const finishDrag = () => {
+      if (!isDraggingSlider) return;
+      isDraggingSlider = false;
+      sendLightingControl(selectedLampId, dragIntensity > 0 ? 'ON' : 'OFF', dragIntensity);
+    };
+
+    sliderTrack.addEventListener('pointerup', finishDrag);
+    sliderTrack.addEventListener('pointercancel', finishDrag);
   }
 
+  // --- Thermostat Controls (AUTO/MANUAL & Threshold +/-) ---
   if (switchAC) {
     switchAC.addEventListener('change', (e) => {
-      sendFanControl(e.target.checked ? 'ON' : 'OFF');
+      sendFanControl({ fan_status: e.target.checked ? 'ON' : 'OFF' });
     });
   }
 
-  // Thermostat Temp Adjust (+ / -)
+  if (ecoModePill) {
+    ecoModePill.addEventListener('click', () => {
+      sendFanControl({ mode: 'AUTO' });
+    });
+  }
+
   if (btnTempMinus && btnTempPlus) {
-    btnTempMinus.addEventListener('click', () => {
-      let cur = parseFloat(systemState.thermostat?.temperature || 22.5);
-      cur = Math.max(16.0, cur - 0.5);
-      if (thermoCurrentTemp) thermoCurrentTemp.innerHTML = `${cur.toFixed(1)}<small>°C</small>`;
-    });
-
-    btnTempPlus.addEventListener('click', () => {
-      let cur = parseFloat(systemState.thermostat?.temperature || 22.5);
-      cur = Math.min(32.0, cur + 0.5);
-      if (thermoCurrentTemp) thermoCurrentTemp.innerHTML = `${cur.toFixed(1)}<small>°C</small>`;
-    });
+    const adjustAutoLimit = (delta) => {
+      const curOn = Number(systemState.thermostat?.auto_on ?? 32);
+      const nextOn = Math.max(20, Math.min(45, curOn + delta));
+      const nextOff = Math.max(18, nextOn - 2);
+      sendFanControl({ mode: 'AUTO', auto_on: nextOn, auto_off: nextOff });
+    };
+    btnTempMinus.addEventListener('click', () => adjustAutoLimit(-1));
+    btnTempPlus.addEventListener('click', () => adjustAutoLimit(1));
   }
 
-  // 3. Door Lock Control
-  async function sendDoorlockControl(lockStatus) {
-    try {
-      await fetch('/api/doorlock/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lock_status: lockStatus })
-      });
-      fetchSystemState();
-    } catch (err) {
-      console.error('Failed to control door lock:', err);
-    }
-  }
-
+  // --- Door Lock & Doorbell Controls ---
   if (switchDoorlock) {
     switchDoorlock.addEventListener('change', (e) => {
       sendDoorlockControl(e.target.checked ? 'LOCKED' : 'UNLOCKED');
     });
   }
 
-  // 4. Doorbell Ack
+  if (btnDoorbellUnlock) {
+    btnDoorbellUnlock.addEventListener('click', async () => {
+      await sendDoorlockControl('UNLOCKED');
+      await fetch('/api/doorbell/ack', { method: 'POST' });
+      fetchSystemState();
+    });
+  }
+
   if (btnAckDoorbell) {
     btnAckDoorbell.addEventListener('click', async () => {
-      try {
-        await fetch('/api/doorbell/ack', { method: 'POST' });
-        if (doorbellAlertBanner) doorbellAlertBanner.classList.remove('active');
-        fetchSystemState();
-      } catch (err) {
-        console.error('Failed to ack doorbell:', err);
-      }
+      await fetch('/api/doorbell/ack', { method: 'POST' });
+      if (doorbellAlertBanner) doorbellAlertBanner.classList.remove('active');
+      fetchSystemState();
     });
   }
 
-  // 5. Interactive IoT Nodes Click
-  const nodeLight = document.getElementById('nodeLight');
-  if (nodeLight) {
-    nodeLight.addEventListener('click', () => {
-      const isCurrentlyOn = systemState.lighting?.status === 'ON';
-      sendLightingControl(isCurrentlyOn ? 'OFF' : 'ON');
+  // --- Camera Controls & AR Overlay Toggle ---
+  if (switchCamera) {
+    switchCamera.addEventListener('change', (e) => {
+      sendCameraControl(e.target.checked);
     });
   }
 
-  const nodeDoor = document.getElementById('nodeDoor');
-  if (nodeDoor) {
-    nodeDoor.addEventListener('click', () => {
-      const isLocked = systemState.doorlock?.lock_status === 'LOCKED';
-      sendDoorlockControl(isLocked ? 'UNLOCKED' : 'LOCKED');
+  if (btnCamPower) {
+    btnCamPower.addEventListener('click', () => {
+      sendCameraControl(!systemState.camera?.active);
     });
   }
 
-  const nodeAC = document.getElementById('nodeAC');
-  if (nodeAC) {
-    nodeAC.addEventListener('click', () => {
-      const isFanOn = systemState.thermostat?.fan_status === 'ON';
-      sendFanControl(isFanOn ? 'OFF' : 'ON');
+  if (btnToggleArOverlay && iotNodeStage) {
+    btnToggleArOverlay.addEventListener('click', () => {
+      arOverlayVisible = !arOverlayVisible;
+      iotNodeStage.classList.toggle('hidden-overlay', !arOverlayVisible);
+      btnToggleArOverlay.querySelector('span').textContent = arOverlayVisible ? 'AR Nodes: ON' : 'AR Nodes: OFF';
     });
   }
 
-  // 6. Camera Fullscreen Toggle
   if (btnCamFullscreen && cardCameraVisualizer) {
     btnCamFullscreen.addEventListener('click', () => {
       if (!document.fullscreenElement) {
-        cardCameraVisualizer.requestFullscreen().catch(err => alert(`Fullscreen error: ${err.message}`));
+        cardCameraVisualizer.requestFullscreen().catch(() => {});
       } else {
         document.exitFullscreen();
       }
     });
   }
 
-  // 7. Chart Mode Switching
-  if (btnModePower && btnModeTelemetry) {
-    btnModePower.addEventListener('click', () => {
-      btnModePower.classList.add('active');
-      btnModeTelemetry.classList.remove('active');
-      chartMode = 'power';
-      resetToPowerChart();
+  // --- AR Satellite Nodes Quick Actions ---
+  if (nodeLight) {
+    nodeLight.addEventListener('click', () => {
+      const cur = getSelectedLamp();
+      sendLightingControl(selectedLampId, cur.status === 'ON' ? 'OFF' : 'ON');
     });
+  }
+  if (nodeDoor) {
+    nodeDoor.addEventListener('click', () => {
+      const isLocked = getMainDoor().lock_status === 'LOCKED';
+      sendDoorlockControl(isLocked ? 'UNLOCKED' : 'LOCKED');
+    });
+  }
+  if (nodeCam) {
+    nodeCam.addEventListener('click', () => {
+      sendCameraControl(!systemState.camera?.active);
+    });
+  }
+  if (nodeAC) {
+    nodeAC.addEventListener('click', () => {
+      const isFanOn = systemState.thermostat?.fan_status === 'ON';
+      sendFanControl({ fan_status: isFanOn ? 'OFF' : 'ON' });
+    });
+  }
 
+  // --- Chart Mode Switch ---
+  if (btnModeTelemetry && btnModePower) {
     btnModeTelemetry.addEventListener('click', () => {
+      chartMode = 'telemetry';
       btnModeTelemetry.classList.add('active');
       btnModePower.classList.remove('active');
-      chartMode = 'telemetry';
       loadTelemetryChart();
     });
-  }
-
-  // 8. Navigation Drawer (Security Logs)
-  function openLogsDrawer() {
-    if (logsDrawerBackdrop) logsDrawerBackdrop.classList.add('active');
-  }
-
-  function closeLogsDrawer() {
-    if (logsDrawerBackdrop) logsDrawerBackdrop.classList.remove('active');
-  }
-
-  if (btnNotifications) btnNotifications.addEventListener('click', openLogsDrawer);
-  if (navSecurityBtn) navSecurityBtn.addEventListener('click', openLogsDrawer);
-  if (btnCloseDrawer) btnCloseDrawer.addEventListener('click', closeLogsDrawer);
-  if (logsDrawerBackdrop) {
-    logsDrawerBackdrop.addEventListener('click', (e) => {
-      if (e.target === logsDrawerBackdrop) closeLogsDrawer();
-    });
-  }
-  if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', fetchSystemState);
-
-  // 9. Simulator Modal
-  function openSimulator() {
-    if (simModalBackdrop) simModalBackdrop.classList.add('active');
-  }
-
-  function closeSimulator() {
-    if (simModalBackdrop) simModalBackdrop.classList.remove('active');
-  }
-
-  if (btnSimulator) btnSimulator.addEventListener('click', openSimulator);
-  if (btnCloseSimulator) btnCloseSimulator.addEventListener('click', closeSimulator);
-  if (simModalBackdrop) {
-    simModalBackdrop.addEventListener('click', (e) => {
-      if (e.target === simModalBackdrop) closeSimulator();
+    btnModePower.addEventListener('click', () => {
+      chartMode = 'power';
+      btnModePower.classList.add('active');
+      btnModeTelemetry.classList.remove('active');
+      showPowerChart();
     });
   }
 
-  // Hardware Simulator Actions
-  if (btnSimTapRfid) {
-    btnSimTapRfid.addEventListener('click', async () => {
-      const uid = simRfidUid.value.trim() || 'E2 8A 1F 09';
-      const access = simRfidAccess.value;
-      const lockStatus = access === 'DIIZINKAN' ? 'UNLOCKED' : 'LOCKED';
-      await fetch('/api/doorlock', {
+  // --- Sidebar Navigation ---
+  document.querySelectorAll('.sidebar-rail .nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      if (tab === 'security') {
+        openLogsDrawer();
+        return;
+      }
+      if (tab === 'simulator') {
+        openSimulator();
+        return;
+      }
+      document.querySelectorAll('.sidebar-rail .nav-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (tab === 'home') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (tab === 'devices') {
+        document.getElementById('deviceMatrixSection')?.scrollIntoView({ behavior: 'smooth' });
+      } else if (tab === 'energy') {
+        btnModeTelemetry?.click();
+        document.getElementById('cardPowerAnalytics')?.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+
+  // --- Drawer & Simulator Modals ---
+  const openLogsDrawer = () => logsDrawerBackdrop?.classList.add('active');
+  const closeLogsDrawer = () => logsDrawerBackdrop?.classList.remove('active');
+  const openSimulator = () => simModalBackdrop?.classList.add('active');
+  const closeSimulator = () => simModalBackdrop?.classList.remove('active');
+
+  btnNotifications?.addEventListener('click', openLogsDrawer);
+  btnCloseDrawer?.addEventListener('click', closeLogsDrawer);
+  logsDrawerBackdrop?.addEventListener('click', (e) => { if (e.target === logsDrawerBackdrop) closeLogsDrawer(); });
+  btnRefreshLogs?.addEventListener('click', fetchSystemState);
+
+  btnSimulator?.addEventListener('click', openSimulator);
+  btnCloseSimulator?.addEventListener('click', closeSimulator);
+  simModalBackdrop?.addEventListener('click', (e) => { if (e.target === simModalBackdrop) closeSimulator(); });
+
+  // --- Hardware Simulator Actions ---
+  btnSimTapRfid?.addEventListener('click', async () => {
+    const uid = simRfidUid.value.trim() || 'A1B2C3D4';
+    const access = simRfidAccess.value;
+    const lockStatus = access === 'DIIZINKAN' ? 'UNLOCKED' : 'LOCKED';
+    await fetch('/api/doorlock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ door: 1, last_uid: uid, lock_status: lockStatus, access_alert: access })
+    });
+    fetchSystemState();
+  });
+
+  btnSimRingBell?.addEventListener('click', async () => {
+    await fetch('/api/doorbell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bell_pressed: true })
+    });
+    fetchSystemState();
+  });
+
+  btnSimSendDht?.addEventListener('click', async () => {
+    const temperature = parseFloat(simTempInp.value) || 33.5;
+    const humidity = parseInt(simHumInp.value, 10) || 65;
+    await fetch('/api/thermostat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ temperature, humidity })
+    });
+    fetchSystemState();
+  });
+
+  // Simulasi kirim 1 frame JPEG asli ke POST /api/camera/frame seperti ESP32-CAM
+  btnSimSendCamFrame?.addEventListener('click', async () => {
+    if (!systemState.camera?.active) {
+      await fetch('/api/camera/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ last_uid: uid, lock_status: lockStatus, access_alert: access })
+        body: JSON.stringify({ active: true })
       });
-      fetchSystemState();
-    });
-  }
+    }
 
-  if (btnSimRingBell) {
-    btnSimRingBell.addEventListener('click', async () => {
-      await fetch('/api/doorbell', {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 360;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 640, 360);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(1, '#1e293b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 640, 360);
+
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(20, 20, 600, 320);
+
+    ctx.fillStyle = '#EF4444';
+    ctx.beginPath();
+    ctx.arc(52, 52, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText('ESP32-CAM • PINTU LAB (TEST FRAME)', 72, 59);
+
+    ctx.fillStyle = '#38BDF8';
+    ctx.font = '18px monospace';
+    ctx.fillText(`WITA: ${new Date().toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Makassar' })}`, 44, 315);
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      await fetch('/api/camera/frame', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bell_pressed: true })
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: blob
       });
       fetchSystemState();
-    });
-  }
+    }, 'image/jpeg', 0.85);
+  });
 
-  if (btnSimSendDht) {
-    btnSimSendDht.addEventListener('click', async () => {
-      const temp = parseFloat(simTempInp.value) || 28.0;
-      const hum = parseInt(simHumInp.value) || 60;
-      await fetch('/api/thermostat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ temperature: temp, humidity: hum })
-      });
-      fetchSystemState();
+  // --- Global Search Filter ---
+  globalSearch?.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.dev-card').forEach(card => {
+      card.style.display = card.textContent.toLowerCase().includes(query) ? '' : 'none';
     });
-  }
+  });
 
-  if (simWaterRange && simWaterValLabel) {
-    simWaterRange.addEventListener('input', (e) => {
-      simWaterValLabel.textContent = `${e.target.value}%`;
-    });
-  }
-
-  if (btnSimSendWater) {
-    btnSimSendWater.addEventListener('click', async () => {
-      const val = parseInt(simWaterRange.value) || 80;
-      const cat = simWaterCat.value;
-      await fetch('/api/water', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level_value: val, category: cat })
-      });
-      fetchSystemState();
-    });
-  }
-
-  // 10. Global Search filter
-  if (globalSearch) {
-    globalSearch.addEventListener('input', (e) => {
-      const query = e.target.value.toLowerCase().trim();
-      const cards = document.querySelectorAll('.dev-card');
-      cards.forEach(card => {
-        const text = card.textContent.toLowerCase();
-        card.style.display = text.includes(query) ? '' : 'none';
-      });
-    });
-  }
-
-  // Initial Boot
-  initPowerChart();
+  // --- Boot ---
+  initChart();
   fetchSystemState();
-  setInterval(fetchSystemState, 2500); // Polling every 2.5s
+  setInterval(fetchSystemState, 2500);
 });
