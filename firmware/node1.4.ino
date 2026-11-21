@@ -1,20 +1,19 @@
 /*
-  NODE 1 (ESP32 DevKit) - 3 lampu + 1 pintu RFID + bel pintu depan + thermostat + water monitor
-  1 pintu (pintu lab): RFID + servo + bel + ESP32-CAM
+  NODE 1 (ESP32 DevKit) - 3 lampu + 1 pintu RFID + bel pintu depan + thermostat
+  Versi Fase 3: Terintegrasi dengan Docker Backend Lokal (server.js)
 
-  Kontrak lama (tetap berlaku untuk lampu 1 dan pintu):
-    GET  /api/lighting, POST /api/doorlock, POST /api/doorbell, POST /api/thermostat, POST /api/water
-  Tambahan (versi 3 lampu + 1 pintu):
-    GET  /api/lamps                 -> {"lamps":[{"id":1,"status":"ON"|"OFF","intensity":0-100}, ... id 1..3]}
+  Endpoint yang dipakai:
+    GET  /api/lamps                 -> {"lamps":[{"id":1..3,"status":"ON"|"OFF","intensity":0-100}]}
     GET  /api/doors                 -> {"doors":[{"id":1,"lock_status":"LOCKED"|"UNLOCKED"}]}
     POST /api/doorlock              {"door":1,"last_uid":"..","lock_status":"..","access_alert":".."}
-  Jika server masih versi lama (404), ESP32 otomatis memakai endpoint lama untuk lampu 1 dan pintu 1.
+    POST /api/doorbell              {"bell_pressed":true}
+    POST /api/thermostat            {"temperature":..,"humidity":..} -> {"fan_status":"ON"|"OFF"}
 
   Pin:
     Lampu 1/2/3 (PWM)      : 25 / 33 / 22
-    Servo pintu           : 13
+    Servo pintu            : 13
     RC522 bersama          : SCK=18, MOSI=23, MISO=19, RST=27
-    RC522 pintu           : SDA(SS)=5
+    RC522 pintu            : SDA(SS)=5
     Buzzer=26, Tombol bel=14, DHT=4, Kipas (BC337)=16 (RX2), Trig=17 (TX2), Echo=34
 
   Library: ArduinoJson (v7), ESP32Servo, MFRC522, DHT sensor library (Adafruit) + Adafruit Unified Sensor
@@ -27,12 +26,11 @@
 #include <ESP32Servo.h>
 #include <DHT.h>
 
-// 1 = MODE UJI MANUAL: tanpa WiFi/server, semua dikontrol lewat Serial Monitor (ketik 'help').
-// Ubah ke 0 saat server sudah siap.
-#define OFFLINE_TEST 1
+// 0 = MODE ONLINE (terhubung WiFi & server Docker lokal)
+#define OFFLINE_TEST 0
 // 1 = pakai modul RC522 asli, 0 = hanya simulasi lewat Serial Monitor
 #define USE_RFID_HW 1
-// 1 = water monitor (ultrasonik) aktif
+// 0 = water monitor nonaktif
 #define ENABLE_WATER 0
 
 #if USE_RFID_HW
@@ -40,9 +38,10 @@
 #include <MFRC522.h>
 #endif
 
-const char* WIFI_SSID = "POCOX8Pro";
-const char* WIFI_PASS = "23456789";
-const char* SERVER_BASE = "https://smarthome-7ocnz8wld-imams-projects-2e4fc7f5.vercel.app";
+// ---------- Konfigurasi WiFi & Server Lokal ----------
+const char* WIFI_SSID   = "realme 6";
+const char* WIFI_PASS   = "imamrahmani";
+const char* SERVER_BASE = "http://10.145.70.13:3000";
 
 // ---------- Lampu ----------
 const int NUM_LAMPS = 3;
@@ -56,7 +55,7 @@ const int PIN_RC_SS1 = 5;
 const int PIN_RC_SCK = 18, PIN_RC_MOSI = 23, PIN_RC_MISO = 19, PIN_RC_RST = 27;
 
 #if USE_RFID_HW
-MFRC522 rfid1(PIN_RC_SS1, MFRC522::UNUSED_PIN);   // RST dikendalikan manual (dipakai bersama)
+MFRC522 rfid1(PIN_RC_SS1, MFRC522::UNUSED_PIN);   // RST dikendalikan manual
 MFRC522* readers[NUM_DOORS] = { &rfid1 };
 bool readerOk[NUM_DOORS] = { false };
 #endif
@@ -73,7 +72,7 @@ struct Door {
   bool byDashboard = false;
   unsigned long unlockedAt = 0;
   String lastUid = "-";
-  String lastAlert = "DITOLAK";
+  String lastAlert = "AMAN";
 };
 Door doors[NUM_DOORS];
 
@@ -89,11 +88,11 @@ const int PIN_ECHO   = 34;
 #define DHTTYPE DHT22
 DHT dht(PIN_DHT, DHTTYPE);
 #define FAN_ACTIVE_HIGH 1
-// 1 = aturan suhu juga dijalankan di ESP32. Ubah ke 0 setelah server baru (aturan kipas otomatis) aktif
-#define LOCAL_AUTO_FAN 1
-float TEMP_ON_C  = 40.0;   // bisa diubah saat uji lewat Serial: 'batas 30 28'
-float TEMP_OFF_C = 38.0;
-int fanOverride = 0;        // 0 = auto, 1 = paksa ON, 2 = paksa OFF (hanya uji manual)
+// 0 = aturan AUTO/MANUAL kipas dikendalikan penuh oleh server.js
+#define LOCAL_AUTO_FAN 0
+float TEMP_ON_C  = 32.0;
+float TEMP_OFF_C = 30.0;
+int fanOverride  = 0;        // 0 = auto, 1 = paksa ON, 2 = paksa OFF (hanya uji manual)
 bool serverFanOn = false;
 bool localFanOn  = false;
 
@@ -111,7 +110,6 @@ void IRAM_ATTR onBell() {
 }
 
 // ================== UMUM ==================
-// Buzzer aktif: cukup HIGH selama durasi
 void beep(int ms) {
   digitalWrite(PIN_BUZZER, HIGH);
   delay(ms);
@@ -124,10 +122,13 @@ void connectWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries < 40) { delay(250); Serial.print("."); tries++; }
-  Serial.println(WiFi.status() == WL_CONNECTED ? " OK" : " GAGAL");
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf(" OK (IP ESP32: %s)\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println(" GAGAL");
+  }
 }
 
-// Koneksi HTTPS dipakai ulang (keep-alive) supaya tiap panggilan tidak handshake dari awal
 WiFiClientSecure secureClient;
 WiFiClient plainClient;
 bool secureReady = false;
@@ -135,8 +136,9 @@ bool secureReady = false;
 int sendHttp(bool isPost, const String& path, const String& body, String& resp) {
   if (WiFi.status() != WL_CONNECTED) return -1;
   String url = String(SERVER_BASE) + path;
+  bool isHttps = url.startsWith("https");
   HTTPClient http;
-  if (url.startsWith("https")) {
+  if (isHttps) {
     if (!secureReady) { secureClient.setInsecure(); secureReady = true; }
     http.begin(secureClient, url);
   } else {
@@ -146,8 +148,12 @@ int sendHttp(bool isPost, const String& path, const String& body, String& resp) 
   http.setTimeout(5000);
   http.addHeader("Content-Type", "application/json");
   int code = isPost ? http.POST(body) : http.GET();
-  if (code > 0) resp = http.getString();
-  else secureClient.stop();
+  if (code > 0) {
+    resp = http.getString();
+  } else {
+    if (isHttps) secureClient.stop();
+    else plainClient.stop();
+  }
   http.end();
   return code;
 }
@@ -167,7 +173,7 @@ void pollLamps() {
   String resp;
   int code = sendHttp(false, "/api/lamps", "", resp);
 
-  if (code == 404) {   // server lama: hanya lampu 1
+  if (code == 404) {
     code = sendHttp(false, "/api/lighting", "", resp);
     if (code != 200) { Serial.printf("[LAMP] GET gagal, code=%d\n", code); return; }
     JsonDocument d;
@@ -194,7 +200,7 @@ void pollLamps() {
   Serial.println();
 }
 
-// ================== 2 PINTU ==================
+// ================== PINTU RFID ==================
 void driveDoor(int i, bool open) {
   doors[i].servo.write(open ? SERVO_OPEN_ANGLE : SERVO_LOCK_ANGLE);
 }
@@ -214,7 +220,6 @@ void postDoorlock(int i, const String& uid, const char* lockStatus, const char* 
   Serial.printf("[DOOR%d] POST %s -> code=%d\n", i + 1, body.c_str(), code);
 }
 
-// Terapkan perintah kunci dari dashboard
 void applyDoorCommand(int i, const char* st) {
   Door& d = doors[i];
   if (strcmp(st, "UNLOCKED") == 0 && !d.unlocked) {
@@ -237,7 +242,7 @@ void pollDoors() {
   String resp;
   int code = sendHttp(false, "/api/doors", "", resp);
 
-  if (code == 404) {   // server lama: hanya pintu 1
+  if (code == 404) {
     code = sendHttp(false, "/api/doorlock", "", resp);
     if (code != 200) { Serial.printf("[DOOR] GET gagal, code=%d\n", code); return; }
     JsonDocument d;
@@ -292,12 +297,12 @@ void checkAutoRelock() {
     if (d.unlocked && !d.byDashboard && millis() - d.unlockedAt >= RELOCK_MS) {
       driveDoor(i, false);
       d.unlocked = false;
-      Serial.printf("[DOOR%d] Auto-lock\n", i + 1);
-      postDoorlock(i, d.lastUid, "LOCKED", d.lastAlert.c_str());
+      d.lastAlert = "AMAN";
+      Serial.printf("[DOOR%d] Auto-lock -> AMAN\n", i + 1);
+      postDoorlock(i, d.lastUid, "LOCKED", "AMAN");
     }
   }
 }
-
 
 void setFan(bool on);
 void taskThermostat();
@@ -333,8 +338,7 @@ bool handleTestCommand(const String& line) {
 
   if (line == "BUKA")  { applyDoorCommand(0, "UNLOCKED"); return true; }
   if (line == "KUNCI") { applyDoorCommand(0, "LOCKED");   return true; }
-
-  if (line == "BEL") { bellFlag = true; return true; }
+  if (line == "BEL")   { bellFlag = true; return true; }
 
   if (line == "KIPAS ON")   { fanOverride = 1; setFan(true);  Serial.println("[FAN] MANUAL ON");  return true; }
   if (line == "KIPAS OFF")  { fanOverride = 2; setFan(false); Serial.println("[FAN] MANUAL OFF"); return true; }
@@ -351,14 +355,13 @@ bool handleTestCommand(const String& line) {
 
   if (line == "SUHU") { taskThermostat(); return true; }
 
-  // UID kartu = 8 / 14 / 20 karakter hex (0-9, A-F). Selain itu bukan UID.
   bool allHex = true;
   for (unsigned k = 0; k < line.length(); k++) {
     char c = line[k];
     if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) { allHex = false; break; }
   }
   int n = line.length();
-  if (allHex && (n == 8 || n == 14 || n == 20)) return false;   // dianggap UID kartu
+  if (allHex && (n == 8 || n == 14 || n == 20)) return false;
   Serial.printf("[?] '%s' bukan perintah dan bukan UID kartu. Ketik HELP.\n", line.c_str());
   return true;
 }
@@ -381,7 +384,6 @@ void readRfid() {
     }
   }
 #endif
-  // Uji lewat Serial Monitor: ketik UID, contoh "A1B2C3D4"
   if (Serial.available()) {
     String line = Serial.readStringUntil('\n');
     line.trim(); line.toUpperCase();
@@ -460,8 +462,8 @@ void taskThermostat() {
   Serial.printf("[THERMO] suhu=%.1f lembap=%.1f batas=%.0f/%.0f mode=%s KIPAS=%s\n",
                 t, h, TEMP_ON_C, TEMP_OFF_C, fanOverride == 0 ? "AUTO" : (fanOverride == 1 ? "MANUAL-ON" : "MANUAL-OFF"), fanOn ? "ON" : "OFF");
 #else
-  Serial.printf("[THERMO] suhu=%.1f lembap=%.1f server_fan=%s lokal_fan=%s KIPAS=%s code=%d\n",
-                t, h, serverFanOn ? "ON" : "OFF", localFanOn ? "ON" : "OFF", fanOn ? "ON" : "OFF", code);
+  Serial.printf("[THERMO] suhu=%.1f lembap=%.1f server_fan=%s KIPAS=%s code=%d\n",
+                t, h, serverFanOn ? "ON" : "OFF", fanOn ? "ON" : "OFF", code);
 #endif
 }
 
@@ -511,7 +513,7 @@ void taskWater() {
 }
 #endif
 
-// ================== PENJADWAL TUGAS JARINGAN (bergantian) ==================
+// ================== PENJADWAL TUGAS JARINGAN ==================
 struct Task { void (*fn)(); unsigned long interval; unsigned long nextDue; };
 Task tasks[] = {
 #if !OFFLINE_TEST
@@ -580,7 +582,6 @@ void setup() {
   }
 
 #if USE_RFID_HW
-  // Reset RC522 lewat GPIO 27, lalu inisialisasi
   pinMode(PIN_RC_RST, OUTPUT);
   digitalWrite(PIN_RC_RST, LOW);
   delay(10);

@@ -1,5 +1,7 @@
 /*
   ESP32-CAM (AI Thinker) - kamera Video Doorbell
+  Versi Fase 3: Mendukung HTTP lokal (Docker) & HTTPS produksi otomatis
+
   GET  /api/camera        -> {"active":true|false}
   POST /api/camera/frame  (body JPEG, Content-Type: image/jpeg) -> {"active":true|false}
 
@@ -13,9 +15,10 @@
 #include <ArduinoJson.h>
 #include "esp_camera.h"
 
-const char* WIFI_SSID = "WLC_CNAP";
-const char* WIFI_PASS = "s4y4b1s4";
-const char* SERVER_BASE = "https://smarthome-7ocnz8wld-imams-projects-2e4fc7f5.vercel.app";
+// ---------- Konfigurasi WiFi & Server Lokal ----------
+const char* WIFI_SSID   = "realme 6";
+const char* WIFI_PASS   = "imamrahmani";
+const char* SERVER_BASE = "http://10.145.70.13:3000";
 
 // Pin kamera AI Thinker ESP32-CAM
 #define PWDN_GPIO_NUM  32
@@ -35,12 +38,31 @@ const char* SERVER_BASE = "https://smarthome-7ocnz8wld-imams-projects-2e4fc7f5.v
 #define HREF_GPIO_NUM  23
 #define PCLK_GPIO_NUM  22
 
-const unsigned long IDLE_POLL_MS = 1500;
+const unsigned long IDLE_POLL_MS   = 1500;
+const unsigned long FRAME_DELAY_MS = 200;  // ~4-5 FPS di LAN lokal agar stabil & tidak overheat
+
 bool camActive = false;
-bool camReady = false;   // true = kamera sedang menyala (hanya saat aktif, supaya tidak FB-OVF saat standby)
+bool camReady  = false;
 unsigned long lastIdlePoll = 0;
 
-WiFiClientSecure secureClient;   // dipakai ulang supaya tidak handshake tiap frame
+WiFiClientSecure secureClient;
+WiFiClient plainClient;
+bool secureReady = false;
+
+bool beginHttp(HTTPClient& http, const String& path, bool& isHttps) {
+  String url = String(SERVER_BASE) + path;
+  isHttps = url.startsWith("https");
+  if (isHttps) {
+    if (!secureReady) { secureClient.setInsecure(); secureReady = true; }
+    return http.begin(secureClient, url);
+  }
+  return http.begin(plainClient, url);
+}
+
+void resetClient(bool isHttps) {
+  if (isHttps) secureClient.stop();
+  else plainClient.stop();
+}
 
 bool initCamera() {
   camera_config_t config;
@@ -69,8 +91,8 @@ bool initCamera() {
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_QVGA;   // 320x240, ringan dikirim lewat internet
-  config.jpeg_quality = 12;             // 10 = bagus tapi besar, 15 = lebih kecil
+  config.frame_size = FRAMESIZE_QVGA;   // 320x240, ringan & cepat
+  config.jpeg_quality = 12;
   config.fb_count = 1;
 
   esp_err_t err = esp_camera_init(&config);
@@ -86,12 +108,18 @@ void connectWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries < 40) { delay(250); Serial.print("."); tries++; }
-  Serial.println(WiFi.status() == WL_CONNECTED ? " OK" : " GAGAL");
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf(" OK (IP CAM: %s)\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println(" GAGAL");
+  }
 }
 
 bool pollActive() {
+  if (WiFi.status() != WL_CONNECTED) return camActive;
   HTTPClient http;
-  http.begin(secureClient, String(SERVER_BASE) + "/api/camera");
+  bool isHttps = false;
+  beginHttp(http, "/api/camera", isHttps);
   http.setTimeout(5000);
   int code = http.GET();
   bool active = camActive;
@@ -100,6 +128,7 @@ bool pollActive() {
     if (!deserializeJson(doc, http.getString())) active = doc["active"] | false;
   } else {
     Serial.printf("[CAM] GET gagal, code=%d\n", code);
+    resetClient(isHttps);
   }
   http.end();
   return active;
@@ -107,11 +136,14 @@ bool pollActive() {
 
 // Kirim 1 frame. Mengembalikan false kalau server minta berhenti.
 bool sendFrame() {
+  if (WiFi.status() != WL_CONNECTED) return true;
+
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) { Serial.println("[CAM] Gagal ambil gambar"); return true; }
 
   HTTPClient http;
-  http.begin(secureClient, String(SERVER_BASE) + "/api/camera/frame");
+  bool isHttps = false;
+  beginHttp(http, "/api/camera/frame", isHttps);
   http.setReuse(true);
   http.setTimeout(8000);
   http.addHeader("Content-Type", "image/jpeg");
@@ -123,6 +155,7 @@ bool sendFrame() {
     Serial.printf("[CAM] frame %u byte terkirim\n", (unsigned)fb->len);
   } else {
     Serial.printf("[CAM] POST frame gagal, code=%d\n", code);
+    resetClient(isHttps);
   }
   http.end();
   esp_camera_fb_return(fb);
@@ -135,13 +168,12 @@ void stopCamera() {
 
 void setup() {
   Serial.begin(115200);
-  // Tes kamera sekali saat boot, lalu matikan lagi (standby tanpa menumpuk frame)
+  // Tes kamera sekali saat boot, lalu matikan lagi (standby)
   if (!initCamera()) { delay(3000); ESP.restart(); }
-  camReady = true;   // kamera sedang menyala, supaya stopCamera() benar-benar mematikannya
+  camReady = true;
   Serial.println("[CAM] Kamera terbaca, standby");
   stopCamera();
   connectWiFi();
-  secureClient.setInsecure();
 }
 
 void loop() {
@@ -156,6 +188,8 @@ void loop() {
       camActive = false;
       stopCamera();
       Serial.println("[CAM] Dimatikan dari dashboard, standby");
+    } else {
+      delay(FRAME_DELAY_MS);
     }
   } else if (millis() - lastIdlePoll >= IDLE_POLL_MS) {
     lastIdlePoll = millis();
