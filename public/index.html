@@ -1,790 +1,914 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SMART HOME HUB // TELEMETRY & CONTROL</title>
+  <title>NexHome — Smart Living, Simplified // Control Hub</title>
+  
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono & Caveat -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg-base: #0a0c10;
-      --bg-panel: #11141b;
-      --bg-elevated: #171b24;
-      --border: #232936;
-      --border-focus: #384152;
-      --text-main: #e6edf3;
-      --text-muted: #7d8590;
-      --accent-green: #2ea043;
-      --accent-amber: #d29922;
-      --accent-red: #f85149;
-      --accent-blue: #2f81f7;
-      --mono: 'JetBrains Mono', monospace;
-      --sans: 'Inter', -apple-system, sans-serif;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background-color: var(--bg-base);
-      color: var(--text-main);
-      font-family: var(--sans);
-      font-size: 14px;
-      line-height: 1.5;
-      padding: 20px;
-    }
-
-    .container {
-      max-width: 1380px;
-      margin: 0 auto;
-    }
-
-    /* HEADER BAR */
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 14px 20px;
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--accent-green);
-      box-shadow: 0 0 8px var(--accent-green);
-    }
-
-    .brand-title {
-      font-family: var(--mono);
-      font-weight: 700;
-      font-size: 15px;
-      letter-spacing: 0.04em;
-    }
-
-    .brand-sub {
-      color: var(--text-muted);
-      font-size: 12px;
-      font-family: var(--mono);
-    }
-
-    .topbar-meta {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.03em;
-      border: 1px solid transparent;
-    }
-
-    .badge-green { background: rgba(46, 160, 67, 0.12); color: #3fb950; border-color: rgba(46, 160, 67, 0.35); }
-    .badge-amber { background: rgba(210, 153, 34, 0.12); color: #e3b341; border-color: rgba(210, 153, 34, 0.35); }
-    .badge-red   { background: rgba(248, 81, 73, 0.12); color: #ff7b72; border-color: rgba(248, 81, 73, 0.35); }
-    .badge-neutral { background: var(--bg-elevated); color: var(--text-muted); border-color: var(--border); }
-
-    /* DOORBELL BANNER ALERT */
-    .doorbell-banner {
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      background: rgba(210, 153, 34, 0.14);
-      border: 1px solid var(--accent-amber);
-      padding: 12px 20px;
-      border-radius: 6px;
-      margin-bottom: 16px;
-    }
-
-    .doorbell-banner.active {
-      display: flex;
-    }
-
-    /* BENTO GRID */
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 16px;
-    }
-
-    .card {
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 18px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    .col-4 { grid-column: span 4; }
-    .col-6 { grid-column: span 6; }
-    .col-8 { grid-column: span 8; }
-    .col-12 { grid-column: span 12; }
-
-    @media (max-width: 1024px) {
-      .col-4, .col-6, .col-8 { grid-column: span 6; }
-    }
-    @media (max-width: 680px) {
-      .col-4, .col-6, .col-8 { grid-column: span 12; }
-    }
-
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 16px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .card-id {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .card-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text-main);
-      margin-top: 2px;
-    }
-
-    /* METRICS */
-    .metric-row {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      margin: 8px 0 16px;
-    }
-
-    .metric-val {
-      font-family: var(--mono);
-      font-size: 32px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .metric-unit {
-      font-family: var(--mono);
-      font-size: 14px;
-      color: var(--text-muted);
-    }
-
-    .kv-list {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-
-    .kv-box {
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      padding: 10px 12px;
-      border-radius: 4px;
-    }
-
-    .kv-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-family: var(--mono);
-      margin-bottom: 4px;
-    }
-
-    .kv-data {
-      font-family: var(--mono);
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    /* CONTROLS */
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    button {
-      background: var(--bg-elevated);
-      color: var(--text-main);
-      border: 1px solid var(--border-focus);
-      padding: 8px 14px;
-      border-radius: 4px;
-      font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    button:hover {
-      background: #222834;
-      border-color: #525f78;
-    }
-
-    button.btn-primary {
-      background: var(--accent-blue);
-      border-color: var(--accent-blue);
-      color: #fff;
-    }
-
-    button.btn-danger {
-      background: rgba(248, 81, 73, 0.15);
-      border-color: var(--accent-red);
-      color: #ff7b72;
-    }
-
-    input[type="range"] {
-      width: 100%;
-      accent-color: var(--accent-blue);
-      margin: 10px 0;
-      cursor: pointer;
-    }
-
-    input[type="text"] {
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      color: var(--text-main);
-      padding: 8px 10px;
-      border-radius: 4px;
-      font-family: var(--mono);
-      font-size: 12px;
-      width: 100%;
-    }
-
-    /* PROGRESS BAR */
-    .bar-track {
-      width: 100%;
-      height: 10px;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      overflow: hidden;
-      margin: 10px 0 14px;
-    }
-
-    .bar-fill {
-      height: 100%;
-      background: var(--accent-blue);
-      transition: width 0.25s ease;
-    }
-
-    /* CAMERA VIEWPORT */
-    .cam-viewport {
-      width: 100%;
-      height: 210px;
-      background: #07090c;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      margin-bottom: 12px;
-      position: relative;
-    }
-
-    .cam-viewport img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .cam-placeholder {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--text-muted);
-      text-align: center;
-      padding: 20px;
-    }
-
-    /* LOGS */
-    .log-box {
-      background: #07090c;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      height: 210px;
-      overflow-y: auto;
-      padding: 10px 12px;
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-
-    .log-entry {
-      padding: 4px 0;
-      border-bottom: 1px solid #141821;
-      display: flex;
-      gap: 10px;
-    }
-
-    .log-time { color: var(--text-muted); flex-shrink: 0; }
-    .log-mod { font-weight: 700; width: 95px; flex-shrink: 0; }
-
-    .card-footer {
-      margin-top: 14px;
-      padding-top: 10px;
-      border-top: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="container">
-    <!-- TOP HEADER -->
-    <header class="topbar">
-      <div class="brand">
-        <div class="status-dot" id="connDot"></div>
-        <div>
-          <div class="brand-title">SMART HOME HUB // INTEGRATED CONTROL</div>
-          <div class="brand-sub">NODE.JS REST TELEMETRY ENGINE • WOKWI & ESP32 CLUSTER</div>
+
+  <!-- Ambient Backdrop Glows -->
+  <div class="ambient-glow glow-top-left"></div>
+  <div class="ambient-glow glow-bottom-right"></div>
+  <div class="ambient-glow glow-center-warm"></div>
+
+  <!-- MAIN APP CONTAINER -->
+  <div class="app-container">
+
+    <!-- 1. TOP HEADER BAR (72px) -->
+    <header class="top-header">
+      <!-- Brand Cluster -->
+      <div class="brand-group">
+        <div class="brand-icon-box">
+          <svg class="brand-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 10.5L12 3l9 7.5v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 21 9 12 15 12 15 21"/>
+          </svg>
+          <span class="brand-accent-dot"></span>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">NexHome</h1>
+          <span class="brand-subtitle">Smart Living, Simplified</span>
         </div>
       </div>
-      <div class="topbar-meta">
-        <span>POLLING: <strong style="color:var(--text-main)">1500ms</strong></span>
-        <span>WIRING: <span class="badge badge-green">5V / 3.3V RAIL OK</span></span>
-        <span id="serverClock">--:--:--</span>
+
+      <!-- Global Search Bar (~420px) -->
+      <div class="search-bar">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="globalSearch" placeholder="Search devices, rooms, scenes..." />
+        <button class="search-filter-btn" title="Filter Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="4" y1="21" x2="4" y2="14"></line>
+            <line x1="4" y1="10" x2="4" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12" y2="3"></line>
+            <line x1="20" y1="21" x2="20" y2="16"></line>
+            <line x1="20" y1="12" x2="20" y2="3"></line>
+            <line x1="1" y1="14" x2="7" y2="14"></line>
+            <line x1="9" y1="8" x2="15" y2="8"></line>
+            <line x1="17" y1="16" x2="23" y2="16"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- User & Action Cluster -->
+      <div class="header-actions">
+        <!-- Live Status Pill -->
+        <div class="connection-pill" id="connStatusPill">
+          <span class="status-indicator-dot online" id="connDot"></span>
+          <span class="status-text" id="connStatusText">MySQL Connected</span>
+        </div>
+
+        <!-- Notification Bell -->
+        <button class="icon-circle-btn" id="btnNotifications" title="Security & Activity Logs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          <span class="badge-count" id="notifBadge">3</span>
+        </button>
+
+        <!-- Hardware Simulator Trigger -->
+        <button class="icon-circle-btn" id="btnSimulator" title="IoT Hardware Simulator (Testing Tool)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+        </button>
+
+        <!-- User Profile Pill -->
+        <div class="user-pill">
+          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&h=120&q=80" alt="Simon Holloway" class="user-avatar" />
+          <div class="user-info">
+            <span class="user-name">Simon Holloway</span>
+            <span class="user-role">Home Owner</span>
+          </div>
+          <svg class="chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
       </div>
     </header>
 
-    <!-- DOORBELL ALERT BANNER -->
-    <div class="doorbell-banner" id="doorbellBanner">
-      <div>
-        <strong style="font-family:var(--mono); color:#e3b341;">[ALERT NO. 5] VIDEO DOORBELL TRIGGERED!</strong>
-        <div style="font-size:13px; color:var(--text-main);">Pengunjung menekan tombol bel di depan pintu. Periksa kamera keamanan atau konfirmasi.</div>
-      </div>
-      <button onclick="ackDoorbell()">KONFIRMASI / MATIKAN ALARM</button>
+    <!-- 2. BODY LAYOUT (Sidebar + Main Bento) -->
+    <div class="app-body">
+
+      <!-- LEFT NAVIGATION RAIL (84px) -->
+      <aside class="sidebar-rail">
+        <nav class="nav-stack">
+          <button class="nav-item active" data-tab="home" title="Home Overview">
+            <div class="nav-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+              </svg>
+            </div>
+            <span class="nav-label">Home</span>
+          </button>
+
+          <button class="nav-item" data-tab="devices" title="All Devices">
+            <div class="nav-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                <rect x="9" y="9" width="6" height="6"></rect>
+                <line x1="9" y1="1" x2="9" y2="4"></line>
+                <line x1="15" y1="1" x2="15" y2="4"></line>
+                <line x1="9" y1="20" x2="9" y2="23"></line>
+                <line x1="15" y1="20" x2="15" y2="23"></line>
+                <line x1="20" y1="9" x2="23" y2="9"></line>
+                <line x1="20" y1="14" x2="23" y2="14"></line>
+                <line x1="1" y1="9" x2="4" y2="9"></line>
+                <line x1="1" y1="14" x2="4" y2="14"></line>
+              </svg>
+            </div>
+            <span class="nav-label">Devices</span>
+          </button>
+
+          <button class="nav-item" data-tab="scenes" title="Automations & Scenes">
+            <div class="nav-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M14.31 8l5.74 9.94M9.69 8h11.48M7.38 12l5.74-9.94M9.69 16L3.95 6.06M14.31 16H2.83M16.62 12l-5.74 9.94"/>
+              </svg>
+            </div>
+            <span class="nav-label">Scenes</span>
+          </button>
+
+          <button class="nav-item" data-tab="energy" title="Energy & Metrics">
+            <div class="nav-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+            <span class="nav-label">Energy</span>
+          </button>
+
+          <button class="nav-item" data-tab="security" id="navSecurityBtn" title="Security & Door Logs">
+            <div class="nav-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                <polyline points="9 12 11 14 15 10"></polyline>
+              </svg>
+            </div>
+            <span class="nav-label">Security</span>
+          </button>
+
+          <button class="nav-item" data-tab="settings" title="System Settings">
+            <div class="nav-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </div>
+            <span class="nav-label">Settings</span>
+          </button>
+        </nav>
+
+        <!-- Sidebar Decorative Accent -->
+        <div class="sidebar-footer-quote">
+          <span class="script-quote">Good Vibes Only</span>
+        </div>
+      </aside>
+
+      <!-- 3. MAIN BENTO WORKSPACE (12 Columns) -->
+      <main class="bento-workspace">
+
+        <!-- ================= LEFT COLUMN (4 Cols / ~36%) ================= -->
+        <section class="bento-col-left">
+
+          <!-- WIDGET 1: WEATHER CARD (Sunset Mountain Atmosphere) -->
+          <article class="bento-card card-weather" id="cardWeather">
+            <!-- Mountain Sunset Graphic Overlay -->
+            <div class="weather-backdrop-art">
+              <svg class="mountain-svg" viewBox="0 0 400 180" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#2a3754" stop-opacity="0.8"/>
+                    <stop offset="60%" stop-color="#4e3b4a" stop-opacity="0.6"/>
+                    <stop offset="100%" stop-color="#141c2b" stop-opacity="0.95"/>
+                  </linearGradient>
+                  <linearGradient id="mountainGrad1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#23263e" stop-opacity="0.9"/>
+                    <stop offset="100%" stop-color="#111520" stop-opacity="0.98"/>
+                  </linearGradient>
+                  <linearGradient id="mountainGrad2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ff7f36" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#1a1c26" stop-opacity="0.95"/>
+                  </linearGradient>
+                </defs>
+                <rect width="400" height="180" fill="url(#skyGrad)"/>
+                <!-- Sun Disk -->
+                <circle cx="280" cy="55" r="32" fill="#FBBF24" opacity="0.65" filter="blur(6px)"/>
+                <circle cx="280" cy="55" r="24" fill="#FDE68A" opacity="0.9"/>
+                <!-- Layered Peaks -->
+                <polygon points="-20,180 80,70 190,180" fill="url(#mountainGrad2)"/>
+                <polygon points="120,180 260,85 380,180" fill="url(#mountainGrad1)"/>
+                <polygon points="210,180 330,110 440,180" fill="url(#mountainGrad2)"/>
+              </svg>
+            </div>
+
+            <div class="card-content-wrap">
+              <div class="card-meta-row">
+                <div class="location-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                    <circle cx="12" cy="10" r="3"></circle>
+                  </svg>
+                  <span id="weatherCity">Makassar, ID</span>
+                </div>
+                <span class="weather-date" id="weatherDate">Mon, 26 Oct 2026</span>
+              </div>
+
+              <!-- Main Temp & Illustration -->
+              <div class="weather-main-row">
+                <div class="weather-illustration-box">
+                  <!-- 3D styled Sun behind Cloud SVG -->
+                  <svg class="weather-icon-3d" viewBox="0 0 64 64" fill="none">
+                    <circle cx="38" cy="24" r="14" fill="url(#sunInnerGrad)"/>
+                    <defs>
+                      <linearGradient id="sunInnerGrad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#FCD34D"/>
+                        <stop offset="100%" stop-color="#F59E0B"/>
+                      </linearGradient>
+                      <linearGradient id="cloudGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#FFFFFF"/>
+                        <stop offset="100%" stop-color="#CBD5E1"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M46 44H20a12 12 0 0 1-1.6-23.9A16 16 0 0 1 48 24a10 10 0 0 1-2 20z" fill="url(#cloudGrad)" filter="drop-shadow(0 6px 12px rgba(0,0,0,0.3))"/>
+                  </svg>
+                </div>
+                <div class="weather-hero-temp">
+                  <span class="hero-temp-num" id="ambientTemp">26</span>
+                  <span class="hero-temp-unit">°C</span>
+                  <span class="hero-condition">Partly Cloudy</span>
+                </div>
+              </div>
+
+              <!-- Weather Footer Metrics -->
+              <div class="weather-metrics-footer">
+                <div class="metric-pill">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+                  </svg>
+                  <div class="metric-texts">
+                    <span class="m-val" id="weatherHumidity">62%</span>
+                    <span class="m-lbl">Humidity</span>
+                  </div>
+                </div>
+                <div class="metric-pill">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path>
+                  </svg>
+                  <div class="metric-texts">
+                    <span class="m-val">12 km/h</span>
+                    <span class="m-lbl">Wind Speed</span>
+                  </div>
+                </div>
+                <div class="metric-pill">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="2">
+                    <path d="M11 20A7 7 0 0 1 4 13C4 8.5 8 4 12 2c4 2 8 6.5 8 11a7 7 0 0 1-7 7z"></path>
+                    <path d="M12 2v18"></path>
+                  </svg>
+                  <div class="metric-texts">
+                    <span class="m-val text-emerald">Good</span>
+                    <span class="m-lbl">Air Quality</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- WIDGET 2: AIR QUALITY WIDGET (Emerald Glow & Semi-Circular Gauge) -->
+          <article class="bento-card card-airquality" id="cardAirQuality">
+            <div class="card-header-flex">
+              <div class="header-left">
+                <div class="badge-icon-sq glow-emerald">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="2">
+                    <path d="M11 20A7 7 0 0 1 4 13C4 8.5 8 4 12 2c4 2 8 6.5 8 11a7 7 0 0 1-7 7z"></path>
+                    <path d="M12 2v18"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 class="card-title">Air Quality</h2>
+                  <span class="card-subtitle">Living Room Sensor</span>
+                </div>
+              </div>
+              <span class="status-badge-emerald">Good</span>
+            </div>
+
+            <!-- Two-Zone Visualization -->
+            <div class="aqi-dual-zone">
+              <!-- Left: Semi-circular Gauge -->
+              <div class="gauge-col">
+                <div class="gauge-svg-wrap">
+                  <svg class="circular-gauge" viewBox="0 0 140 100">
+                    <defs>
+                      <linearGradient id="aqiArcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#10B981"/>
+                        <stop offset="50%" stop-color="#34D399"/>
+                        <stop offset="100%" stop-color="#6EE7B7"/>
+                      </linearGradient>
+                      <filter id="aqiGlow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="3" result="blur"/>
+                        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+                      </filter>
+                    </defs>
+                    <!-- Background Track Arc -->
+                    <path d="M 20 85 A 55 55 0 1 1 120 85" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" stroke-linecap="round"/>
+                    <!-- Active Value Arc -->
+                    <path id="aqiProgressArc" d="M 20 85 A 55 55 0 1 1 120 85" fill="none" stroke="url(#aqiArcGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="195" stroke-dashoffset="65" filter="url(#aqiGlow)"/>
+                  </svg>
+                  <div class="gauge-inner-label">
+                    <span class="gauge-sub">AQI</span>
+                    <span class="gauge-metric-value" id="aqiVal">32</span>
+                    <span class="gauge-note">Fresh & Healthy</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right: Sparkline Metric -->
+              <div class="sparkline-col">
+                <div class="sparkline-header">
+                  <div class="spark-icon-row">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="2"></circle>
+                      <circle cx="18" cy="8" r="1.5"></circle>
+                      <circle cx="6" cy="15" r="1.5"></circle>
+                    </svg>
+                    <span class="spark-label">PM2.5 Index</span>
+                  </div>
+                  <span class="spark-number">12 <small>µg/m³</small></span>
+                </div>
+                <!-- Sparkline SVG -->
+                <div class="sparkline-graphic">
+                  <svg viewBox="0 0 120 40" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#34D399" stop-opacity="0.35"/>
+                        <stop offset="100%" stop-color="#34D399" stop-opacity="0.0"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M0,32 Q15,10 30,22 T60,14 T90,28 T120,18 L120,40 L0,40 Z" fill="url(#sparkFill)"/>
+                    <path d="M0,32 Q15,10 30,22 T60,14 T90,28 T120,18" fill="none" stroke="#34D399" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <span class="spark-foot-sub">Optimal indoor filtration</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- WIDGET 3: TEMPERATURE & THERMOSTAT DIAL (Warm Amber / Cyan Arc) -->
+          <article class="bento-card card-thermostat" id="cardThermostat">
+            <div class="card-header-flex">
+              <div class="header-left">
+                <div class="badge-icon-sq glow-orange">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2">
+                    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h2 class="card-title">Temperature</h2>
+                  <span class="card-subtitle">Living Room Smart AC</span>
+                </div>
+              </div>
+              <div class="eco-pill" id="ecoModePill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="2">
+                  <path d="M11 20A7 7 0 0 1 4 13C4 8.5 8 4 12 2c4 2 8 6.5 8 11a7 7 0 0 1-7 7z"></path>
+                </svg>
+                <span>Eco Mode</span>
+              </div>
+            </div>
+
+            <!-- Dial Arc & Temperature Controls -->
+            <div class="thermostat-dial-box">
+              <div class="dial-svg-wrap">
+                <svg class="thermo-arc-svg" viewBox="0 0 200 135">
+                  <defs>
+                    <linearGradient id="thermoThermalGrad" x1="0%" y1="100%" x2="100%" y2="100%">
+                      <stop offset="0%" stop-color="#F97316"/>
+                      <stop offset="50%" stop-color="#FCD34D"/>
+                      <stop offset="100%" stop-color="#38BDF8"/>
+                    </linearGradient>
+                  </defs>
+                  <!-- Base Track -->
+                  <path d="M 30 115 A 75 75 0 1 1 170 115" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="12" stroke-linecap="round"/>
+                  <!-- Filled Thermal Arc -->
+                  <path id="thermoProgressArc" d="M 30 115 A 75 75 0 1 1 170 115" fill="none" stroke="url(#thermoThermalGrad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="270" stroke-dashoffset="90"/>
+                  <!-- Indicator Thumb Circle -->
+                  <circle id="thermoThumb" cx="145" cy="50" r="7" fill="#FFFFFF" filter="drop-shadow(0 2px 6px rgba(0,0,0,0.6))"/>
+                </svg>
+
+                <!-- Center Metric Readout -->
+                <div class="dial-center-content">
+                  <span class="dial-temp-text" id="thermoCurrentTemp">22.5<small>°C</small></span>
+                  <div class="dial-status-chip" id="thermoFanStatusChip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <line x1="12" y1="2" x2="12" y2="22"></line>
+                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                      <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"></line>
+                    </svg>
+                    <span id="thermoModeLabel">Cooling Active</span>
+                  </div>
+                </div>
+
+                <!-- Adjustment Buttons: - and + -->
+                <button class="dial-adj-btn btn-minus" id="btnTempMinus" title="Decrease Target Temp">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+                <button class="dial-adj-btn btn-plus" id="btnTempPlus" title="Increase Target Temp">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </article>
+
+        </section>
+
+        <!-- ================= RIGHT COLUMN (8 Cols / ~64%) ================= -->
+        <section class="bento-col-right">
+
+          <!-- ROW 1 (~56% Height): HERO LIVING ROOM CAMERA & AR HUB -->
+          <article class="bento-card card-cam-visualizer" id="cardCameraVisualizer">
+            <!-- Living Room Photorealistic Background -->
+            <div class="camera-stage-bg" style="background-image: url('living_room_cam.jpg');">
+              <div class="cam-vignette-overlay"></div>
+            </div>
+
+            <!-- Top Room Selector Bar -->
+            <div class="cam-room-selector">
+              <button class="room-tab active" data-room="living-room">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                </svg>
+                <span>Living Room</span>
+                <svg class="chevron-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              <button class="room-tab" data-room="kitchen">Kitchen</button>
+              <button class="room-tab" data-room="bedroom">Bedroom</button>
+              <button class="room-tab" data-room="garage">Garage</button>
+              <button class="room-tab" data-room="room02">Room 02</button>
+            </div>
+
+            <!-- Interactive IoT Node Diagram Overlay -->
+            <div class="iot-node-stage" id="iotNodeStage">
+              <!-- SVG Connector Lines (Orthogonal & Clean) -->
+              <svg class="node-connector-svg" viewBox="0 0 700 380" preserveAspectRatio="none">
+                <!-- Center to Light (Top Left) -->
+                <path d="M350,190 L180,100" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-dasharray="4 4"/>
+                <!-- Center to Doorlock (Bottom Left) -->
+                <path d="M350,190 L160,280" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-dasharray="4 4"/>
+                <!-- Center to TV (Bottom Center) -->
+                <path d="M350,190 L350,300" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-dasharray="4 4"/>
+                <!-- Center to WiFi (Top Right) -->
+                <path d="M350,190 L520,100" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-dasharray="4 4"/>
+                <!-- Center to AC/Fan (Bottom Right) -->
+                <path d="M350,190 L530,270" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-dasharray="4 4"/>
+              </svg>
+
+              <!-- Center Hub Node (64px) -->
+              <div class="iot-node hub-center-node" title="NexHome IoT Core Gateway">
+                <div class="node-pulse-ring"></div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2">
+                  <path d="M3 10.5L12 3l9 7.5v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                  <polyline points="9 21 9 12 15 12 15 21"/>
+                </svg>
+              </div>
+
+              <!-- Satellite Node 1: Smart Lighting (Top Left) -->
+              <div class="iot-node sat-node node-lighting" id="nodeLight" data-target="lighting" title="Click to Toggle Light">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2">
+                  <path d="M9 18h6"></path>
+                  <path d="M10 22h4"></path>
+                  <path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.5 4.5 3 6h8c1.5-1.5 3-3.5 3-6a7 7 0 0 0-7-7z"></path>
+                </svg>
+                <span class="node-label">Lampu</span>
+              </div>
+
+              <!-- Satellite Node 2: Smart Door Lock (Bottom Left) -->
+              <div class="iot-node sat-node node-doorlock" id="nodeDoor" data-target="doorlock" title="Click to Toggle Door Lock">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span class="node-label">Pintu RFID</span>
+              </div>
+
+              <!-- Satellite Node 3: Smart TV / Doorbell (Bottom Center) -->
+              <div class="iot-node sat-node node-tv" id="nodeTV" data-target="doorbell" title="Smart TV / Video Doorbell Screen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="2">
+                  <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+                  <polyline points="17 2 12 7 7 2"></polyline>
+                </svg>
+                <span class="node-label">Smart TV</span>
+              </div>
+
+              <!-- Satellite Node 4: Wi-Fi Router (Top Right) -->
+              <div class="iot-node sat-node node-wifi" id="nodeWifi" data-target="network" title="High-Speed Mesh Wi-Fi">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2">
+                  <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                  <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                  <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                  <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+                <span class="node-label">Wi-Fi</span>
+              </div>
+
+              <!-- Satellite Node 5: Air Conditioner / Cooling Fan (Bottom Right) -->
+              <div class="iot-node sat-node node-ac" id="nodeAC" data-target="thermostat" title="Click to Toggle Cooling Fan">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#2DD4BF" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M14.31 8l5.74 9.94"></path>
+                  <path d="M9.69 8h11.48"></path>
+                  <path d="M7.38 12l5.74-9.94"></path>
+                  <path d="M9.69 16L3.95 6.06"></path>
+                </svg>
+                <span class="node-label">Kipas AC</span>
+              </div>
+            </div>
+
+            <!-- Floating Vertical Brightness Slider (Right-Center) -->
+            <div class="floating-slider-capsule" id="brightnessCapsule">
+              <div class="slider-top-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"></circle>
+                  <line x1="12" y1="1" x2="12" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="23"></line>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                  <line x1="1" y1="12" x2="3" y2="12"></line>
+                  <line x1="21" y1="12" x2="23" y2="12"></line>
+                </svg>
+              </div>
+              <span class="slider-pct-label" id="sliderPctLabel">70%</span>
+              
+              <!-- Vertical Track Bar -->
+              <div class="slider-track-wrap" id="sliderTrack">
+                <div class="slider-fill-bar" id="sliderFillBar" style="height: 70%;"></div>
+                <div class="slider-thumb-handle" id="sliderThumb"></div>
+              </div>
+
+              <!-- Power Button -->
+              <button class="slider-pwr-btn on" id="btnSliderPower" title="Toggle Lamp Power">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                  <line x1="12" y1="2" x2="12" y2="12"></line>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Bottom Camera Action Controls -->
+            <div class="cam-bottom-actions">
+              <div class="cam-pill-live">
+                <span class="live-dot-pulse"></span>
+                <span>Live Feed</span>
+              </div>
+              <div class="cam-pill-group">
+                <button class="cam-action-pill" id="btnCamRes">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                  </svg>
+                  <span>4K Stream</span>
+                </button>
+                <button class="cam-action-pill" id="btnCamFullscreen" title="Toggle Fullscreen">
+                  <span>Full Screen</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <polyline points="9 21 3 21 3 15"></polyline>
+                    <line x1="21" y1="3" x2="14" y2="10"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <!-- ROW 2 (~44% Height): SPLIT SUB-GRID (2x2 Toggles + Power Chart) -->
+          <div class="bento-row-bottom">
+
+            <!-- SUB-COL LEFT: QUICK DEVICE TOGGLE MATRIX (2x2 Grid) -->
+            <div class="device-matrix-grid">
+
+              <!-- DEVICE 1: LIGHTING -->
+              <div class="dev-card card-lighting active" id="devCardLighting">
+                <div class="dev-card-top">
+                  <div class="dev-icon-circle icon-glow-amber">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M9 18h6"></path>
+                      <path d="M10 22h4"></path>
+                      <path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.5 4.5 3 6h8c1.5-1.5 3-3.5 3-6a7 7 0 0 0-7-7z"></path>
+                    </svg>
+                  </div>
+                  <!-- Switch Component -->
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="switchLighting" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="dev-card-mid">
+                  <h3 class="dev-name">Lighting</h3>
+                  <span class="dev-room">Living Room</span>
+                </div>
+                <div class="dev-card-bot">
+                  <span class="dev-status-tag" id="lightingStatusText">ON • 70% PWM</span>
+                </div>
+              </div>
+
+              <!-- DEVICE 2: AIR CONDITIONER / FAN -->
+              <div class="dev-card card-ac active" id="devCardAC">
+                <div class="dev-card-top">
+                  <div class="dev-icon-circle icon-glow-cyan">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <line x1="12" y1="2" x2="12" y2="22"></line>
+                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                      <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"></line>
+                    </svg>
+                  </div>
+                  <!-- Switch Component -->
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="switchAC" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="dev-card-mid">
+                  <h3 class="dev-name">Air Conditioner</h3>
+                  <span class="dev-room">Living Room</span>
+                </div>
+                <div class="dev-card-bot">
+                  <span class="dev-status-tag" id="acStatusText">22°C | Cooling</span>
+                </div>
+              </div>
+
+              <!-- DEVICE 3: SMART DOOR LOCK -->
+              <div class="dev-card card-doorlock active" id="devCardDoorlock">
+                <div class="dev-card-top">
+                  <div class="dev-icon-circle icon-glow-purple">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                  </div>
+                  <!-- Switch Component (Checked = LOCKED, Unchecked = UNLOCKED) -->
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="switchDoorlock" checked />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="dev-card-mid">
+                  <h3 class="dev-name">Smart Door Lock</h3>
+                  <span class="dev-room">Main Entrance</span>
+                </div>
+                <div class="dev-card-bot">
+                  <span class="dev-status-tag status-locked" id="doorlockStatusText">LOCKED • AMAN</span>
+                </div>
+              </div>
+
+              <!-- DEVICE 4: WATER TANK MONITOR -->
+              <div class="dev-card card-water active" id="devCardWater">
+                <div class="dev-card-top">
+                  <div class="dev-icon-circle icon-glow-emerald">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+                    </svg>
+                  </div>
+                  <div class="water-mini-badge" id="waterLevelBadge">85%</div>
+                </div>
+                <div class="dev-card-mid">
+                  <h3 class="dev-name">Water Tank</h3>
+                  <span class="dev-room">Rooftop Reservoir</span>
+                </div>
+                <div class="dev-card-bot">
+                  <span class="dev-status-tag" id="waterStatusText">Level: 85% • AMAN</span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- SUB-COL RIGHT: POWER CONSUMPTION & TELEMETRY ANALYTICS -->
+            <div class="bento-card card-power-chart" id="cardPowerAnalytics">
+              <div class="power-card-header">
+                <div class="power-title-box">
+                  <div class="badge-icon-sq glow-orange">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="card-title">Power Consumption</h3>
+                    <span class="card-subtitle">Energy & Telemetry</span>
+                  </div>
+                </div>
+
+                <!-- Dropdown / Toggle View Mode -->
+                <div class="chart-mode-pill">
+                  <button class="mode-btn active" id="btnModePower">7 Days</button>
+                  <button class="mode-btn" id="btnModeTelemetry">Telemetry</button>
+                </div>
+              </div>
+
+              <!-- Metrics Summary Row -->
+              <div class="power-metric-row">
+                <div class="power-primary-number">
+                  <span class="num-bold" id="powerPrimaryMetric">6.8</span>
+                  <span class="unit-text" id="powerUnitMetric">kWh</span>
+                </div>
+                <div class="power-trend-badge" id="powerTrendBadge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
+                    <polyline points="17 18 23 18 23 12"></polyline>
+                  </svg>
+                  <span>18% vs last week</span>
+                </div>
+              </div>
+
+              <!-- Vertical Bar Chart Canvas (Chart.js) -->
+              <div class="chart-canvas-container">
+                <canvas id="powerChartCanvas"></canvas>
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+      </main>
+
     </div>
 
-    <!-- MAIN BENTO GRID -->
-    <div class="grid">
-      <!-- 1. SMART LIGHTING (NO. 2) -->
-      <section class="card col-4">
-        <div>
-          <div class="card-header">
-            <div>
-              <div class="card-id">MODUL 02 // SIMULATOR 1 (GPIO 25)</div>
-              <div class="card-title">Smart Lighting (PWM)</div>
-            </div>
-            <span class="badge badge-neutral" id="lampBadge">OFF</span>
+    <!-- 4. BOTTOM SUSTAINABILITY FOOTER (36px) -->
+    <footer class="bottom-footer">
+      <div class="footer-left">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="2">
+          <path d="M11 20A7 7 0 0 1 4 13C4 8.5 8 4 12 2c4 2 8 6.5 8 11a7 7 0 0 1-7 7z"></path>
+          <path d="M12 2v18"></path>
+        </svg>
+        <span class="footer-msg">Save Energy &nbsp;•&nbsp; A Greener Tomorrow with NexHome Smart AI</span>
+      </div>
+      <div class="footer-right">
+        <span class="sync-clock" id="liveClock">--:--:-- WITA</span>
+        <div class="carousel-dots">
+          <span class="dot active"></span>
+          <span class="dot"></span>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- ================= NOTIFICATION & LOGS SLIDEOUT MODAL ================= -->
+  <div class="drawer-backdrop" id="logsDrawerBackdrop">
+    <aside class="slideout-drawer" id="logsDrawer">
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          <h3>Security & Telemetry Audit Logs</h3>
+        </div>
+        <button class="drawer-close-btn" id="btnCloseDrawer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="drawer-subbar">
+        <span>Displaying latest 25 events from MySQL <code>security_logs</code></span>
+        <button class="btn-refresh-logs" id="btnRefreshLogs">Refresh</button>
+      </div>
+
+      <div class="logs-list-scroll" id="logsListContainer">
+        <!-- Rendered via JavaScript -->
+        <div class="empty-log-state">Memuat riwayat keamanan...</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ================= HARDWARE SIMULATOR MODAL (TESTER) ================= -->
+  <div class="modal-backdrop" id="simModalBackdrop">
+    <div class="sim-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="badge-icon-sq glow-orange">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            </svg>
           </div>
-
-          <div class="metric-row">
-            <span class="metric-val" id="lampIntensityVal">0</span>
-            <span class="metric-unit">% DUTY CYCLE</span>
-          </div>
-
-          <input type="range" id="lampSlider" min="0" max="100" value="0" onchange="setLightingIntensity(this.value)" oninput="document.getElementById('lampIntensityVal').innerText = this.value" />
-
-          <div class="btn-row" style="margin-top: 10px;">
-            <button class="btn-primary" onclick="setLightingPreset(100)">ON (100%)</button>
-            <button onclick="setLightingPreset(40)">DIM (40%)</button>
-            <button onclick="setLightingPreset(0)">OFF (0%)</button>
+          <div>
+            <h3>ESP32 IoT Hardware Simulator</h3>
+            <span>Test backend endpoints & MySQL database without physical sensors</span>
           </div>
         </div>
-        <div class="card-footer">
-          <span>ENDPOINT: GET /api/lighting</span>
-          <span id="lampUpdated">LAST SYNC: -</span>
-        </div>
-      </section>
+        <button class="modal-close-btn" id="btnCloseSimulator">✕</button>
+      </div>
 
-      <!-- 2. SMART DOOR LOCK (NO. 4) -->
-      <section class="card col-4">
-        <div>
-          <div class="card-header">
-            <div>
-              <div class="card-id">MODUL 04 // SIMULATOR 1 (RC522 + SERVO)</div>
-              <div class="card-title">Smart Door Lock RFID</div>
-            </div>
-            <span class="badge badge-green" id="doorAlertBadge">AMAN</span>
+      <div class="sim-modal-body">
+        <!-- Sim Item 1: RFID Doorlock -->
+        <div class="sim-panel">
+          <div class="sim-panel-title">
+            <span>🔑 Modul 04: RFID Card Tap</span>
+            <span class="sim-tag">/api/doorlock</span>
           </div>
-
-          <div class="kv-list">
-            <div class="kv-box">
-              <div class="kv-label">GERENDEL SERVO</div>
-              <div class="kv-data" id="doorLockStatus">LOCKED</div>
-            </div>
-            <div class="kv-box">
-              <div class="kv-label">UID TERAKHIR</div>
-              <div class="kv-data" id="doorLastUid">-</div>
-            </div>
-          </div>
-
-          <div class="btn-row">
-            <button onclick="overrideDoor('UNLOCKED')">BUKA PINTU (WEB)</button>
-            <button onclick="overrideDoor('LOCKED')">KUNCI PINTU</button>
+          <div class="sim-inputs-row">
+            <input type="text" id="simRfidUid" value="E2 8A 1F 09" placeholder="Card UID" />
+            <select id="simRfidAccess">
+              <option value="DIIZINKAN">DIIZINKAN (Unlock)</option>
+              <option value="DITOLAK">DITOLAK (Unauthorized)</option>
+            </select>
+            <button class="btn-sim-action" id="btnSimTapRfid">Tap Card</button>
           </div>
         </div>
-        <div class="card-footer">
-          <span>ENDPOINT: POST /api/doorlock</span>
-          <span id="doorUpdated">LAST SYNC: -</span>
-        </div>
-      </section>
 
-      <!-- 3. VIDEO DOORBELL (NO. 5) -->
-      <section class="card col-4">
-        <div>
-          <div class="card-header">
-            <div>
-              <div class="card-id">MODUL 05 // SIMULATOR 1 (GPIO 14 & 26)</div>
-              <div class="card-title">Video Doorbell & Buzzer</div>
-            </div>
-            <span class="badge badge-neutral" id="bellStateBadge">STANDBY</span>
+        <!-- Sim Item 2: Video Doorbell Ring -->
+        <div class="sim-panel">
+          <div class="sim-panel-title">
+            <span>🔔 Modul 05: Doorbell Button</span>
+            <span class="sim-tag">/api/doorbell</span>
           </div>
-
-          <div class="kv-list">
-            <div class="kv-box">
-              <div class="kv-label">STATUS TOMBOL</div>
-              <div class="kv-data" id="bellPressedText">IDLE</div>
-            </div>
-            <div class="kv-box">
-              <div class="kv-label">BEL TERAKHIR</div>
-              <div class="kv-data" id="bellLastTime">-</div>
-            </div>
-          </div>
-
-          <div class="btn-row">
-            <button onclick="ackDoorbell()">RESET STATUS BEL</button>
+          <div class="sim-inputs-row">
+            <button class="btn-sim-action btn-danger-action" id="btnSimRingBell">Tekan Bel Depan (Trigger Alert)</button>
           </div>
         </div>
-        <div class="card-footer">
-          <span>ENDPOINT: POST /api/doorbell</span>
-          <span id="bellUpdated">LAST SYNC: -</span>
-        </div>
-      </section>
 
-      <!-- 4. SMART THERMOSTAT (NO. 6) -->
-      <section class="card col-6">
-        <div>
-          <div class="card-header">
-            <div>
-              <div class="card-id">MODUL 06 // SIMULATOR 2 (DHT + OLED + FAN GPIO 16)</div>
-              <div class="card-title">Smart Thermostat & Cooling</div>
-            </div>
-            <span class="badge badge-neutral" id="fanBadge">FAN: OFF</span>
+        <!-- Sim Item 3: Thermostat Sensor (DHT) -->
+        <div class="sim-panel">
+          <div class="sim-panel-title">
+            <span>🌡️ Modul 06: DHT Temperature & Humidity</span>
+            <span class="sim-tag">/api/thermostat</span>
           </div>
-
-          <div class="kv-list">
-            <div class="kv-box">
-              <div class="kv-label">SUHU RUANGAN (DHT)</div>
-              <div class="metric-row" style="margin:4px 0 0;">
-                <span class="metric-val" id="tempVal">28.5</span>
-                <span class="metric-unit">°C</span>
-              </div>
-            </div>
-            <div class="kv-box">
-              <div class="kv-label">KELEMBAPAN UDARA</div>
-              <div class="metric-row" style="margin:4px 0 0;">
-                <span class="metric-val" id="humVal">65</span>
-                <span class="metric-unit">% RH</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="btn-row">
-            <button class="btn-primary" onclick="setFan('ON')">NYALAKAN KIPAS (ON)</button>
-            <button onclick="setFan('OFF')">MATIKAN KIPAS (OFF)</button>
+          <div class="sim-inputs-row">
+            <label>Temp (°C): <input type="number" id="simTempInp" value="28.5" step="0.5" style="width:70px;" /></label>
+            <label>Hum (%): <input type="number" id="simHumInp" value="65" step="1" style="width:70px;" /></label>
+            <button class="btn-sim-action" id="btnSimSendDht">Kirim Telemetri</button>
           </div>
         </div>
-        <div class="card-footer">
-          <span>ENDPOINT: POST /api/thermostat</span>
-          <span id="thermoUpdated">LAST SYNC: -</span>
-        </div>
-      </section>
 
-      <!-- 5. WATER MONITOR (NO. 7) -->
-      <section class="card col-6">
-        <div>
-          <div class="card-header">
-            <div>
-              <div class="card-id">MODUL 07 // SIMULATOR 2 (ADC1 GPIO 34)</div>
-              <div class="card-title">Water Tank Level Monitor</div>
-            </div>
-            <span class="badge badge-green" id="waterCatBadge">NORMAL</span>
+        <!-- Sim Item 4: Water Level Sensor -->
+        <div class="sim-panel">
+          <div class="sim-panel-title">
+            <span>💧 Modul 07: Water Level ADC</span>
+            <span class="sim-tag">/api/water</span>
           </div>
-
-          <div class="metric-row" style="margin-bottom:4px;">
-            <span class="metric-val" id="waterLevelVal">50</span>
-            <span class="metric-unit">% KAPASITAS WADAH</span>
-          </div>
-
-          <div class="bar-track">
-            <div class="bar-fill" id="waterBar" style="width: 50%;"></div>
-          </div>
-
-          <div style="font-size:12px; color:var(--text-muted); font-family:var(--mono);" id="waterNotice">
-            Status ketinggian air berada pada batas aman.
+          <div class="sim-inputs-row">
+            <input type="range" id="simWaterRange" min="0" max="100" value="80" style="flex:1;" />
+            <span id="simWaterValLabel">80%</span>
+            <select id="simWaterCat">
+              <option value="AMAN">AMAN</option>
+              <option value="RENDAH">RENDAH</option>
+              <option value="PENUH">PENUH</option>
+            </select>
+            <button class="btn-sim-action" id="btnSimSendWater">Update Level</button>
           </div>
         </div>
-        <div class="card-footer">
-          <span>ENDPOINT: POST /api/water</span>
-          <span id="waterUpdated">LAST SYNC: -</span>
-        </div>
-      </section>
-
-      <!-- 6. SMART SECURITY CAMERA (NO. 3) -->
-      <section class="card col-6">
-        <div>
-          <div class="card-header">
-            <div>
-              <div class="card-id">MODUL 03 // ESP32-CAM OV2640 STREAM</div>
-              <div class="card-title">Smart Security Camera</div>
-            </div>
-            <span class="badge badge-neutral">HTTP MJPEG</span>
-          </div>
-
-          <div class="cam-viewport" id="camBox">
-            <div class="cam-placeholder" id="camPlaceholder">
-              [NO VIDEO STREAM CONNECTED]<br>
-              Masukkan IP Stream ESP32-CAM (contoh: http://192.168.1.50:81/stream) di bawah.
-            </div>
-          </div>
-
-          <div style="display:flex; gap:8px;">
-            <input type="text" id="camUrlInput" placeholder="http://192.168.x.x:81/stream" />
-            <button onclick="saveCamUrl()">SET STREAM</button>
-          </div>
-        </div>
-        <div class="card-footer">
-          <span>MODUL KAMERA TERPISAH</span>
-          <span>PORT 80 / 81</span>
-        </div>
-      </section>
-
-      <!-- 7. SYSTEM LOG & SIMULATOR TESTBENCH (NO. 8) -->
-      <section class="card col-6">
-        <div>
-          <div class="card-header">
-            <div>
-              <div class="card-id">MODUL 08 // SMART HOME HUB LOGS & DIAGNOSTIC</div>
-              <div class="card-title">Real-Time Telemetry Log & Quick Tester</div>
-            </div>
-            <span class="badge badge-green">HUB ONLINE</span>
-          </div>
-
-          <div class="log-box" id="logContainer"></div>
-
-          <div style="margin-top:12px;">
-            <div style="font-family:var(--mono); font-size:11px; color:var(--text-muted); margin-bottom:6px;">
-              UJI SIMULASI PAKET ESP32 (TANPA WOKWI):
-            </div>
-            <div class="btn-row">
-              <button onclick="simRfidValid()">SIMULASI KARTU VALID</button>
-              <button class="btn-danger" onclick="simRfidInvalid()">SIMULASI KARTU DITOLAK</button>
-              <button onclick="simBell()">SIMULASI TEKAN BEL</button>
-              <button onclick="simWaterFull()">SIMULASI AIR PENUH</button>
-            </div>
-          </div>
-        </div>
-        <div class="card-footer">
-          <span>ENDPOINT STATE: GET /api/state</span>
-          <span>CORS: ENABLED (*)</span>
-        </div>
-      </section>
+      </div>
     </div>
   </div>
 
-  <script>
-    async function fetchState() {
-      try {
-        const res = await fetch('/api/state');
-        const data = await res.json();
-        renderDashboard(data);
-        document.getElementById('connDot').style.background = 'var(--accent-green)';
-      } catch (err) {
-        document.getElementById('connDot').style.background = 'var(--accent-red)';
-      }
-    }
+  <!-- ================= DOORBELL POPUP ALERT TOAST ================= -->
+  <div class="doorbell-alert-banner" id="doorbellAlertBanner">
+    <div class="doorbell-banner-content">
+      <div class="alert-icon-pulse">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </div>
+      <div class="alert-texts">
+        <h4>ADA TAMU DI DEPAN PINTU!</h4>
+        <p>Bel pintu berdering pada <span id="doorbellRingTime">10:30:15</span></p>
+      </div>
+      <button class="btn-ack-doorbell" id="btnAckDoorbell">Respon & Matikan Bel</button>
+    </div>
+  </div>
 
-    function renderDashboard(data) {
-      document.getElementById('serverClock').innerText = new Date().toLocaleTimeString('id-ID', { hour12: false });
-
-      // 1. Lighting
-      const light = data.lighting;
-      if (document.activeElement !== document.getElementById('lampSlider')) {
-        document.getElementById('lampSlider').value = light.intensity;
-        document.getElementById('lampIntensityVal').innerText = light.intensity;
-      }
-      const lampBadge = document.getElementById('lampBadge');
-      lampBadge.innerText = `${light.status} (${light.intensity}%)`;
-      lampBadge.className = 'badge ' + (light.status === 'ON' ? 'badge-amber' : 'badge-neutral');
-      document.getElementById('lampUpdated').innerText = `SYNC: ${light.updated_at}`;
-
-      // 2. Doorlock
-      const door = data.doorlock;
-      document.getElementById('doorLockStatus').innerText = door.lock_status;
-      document.getElementById('doorLastUid').innerText = door.last_uid;
-      document.getElementById('doorUpdated').innerText = `SYNC: ${door.updated_at}`;
-      const doorBadge = document.getElementById('doorAlertBadge');
-      doorBadge.innerText = door.access_alert;
-      doorBadge.className = 'badge ' + (door.access_alert === 'DITOLAK' ? 'badge-red' : 'badge-green');
-
-      // 3. Doorbell
-      const bell = data.doorbell;
-      document.getElementById('bellPressedText').innerText = bell.bell_pressed ? 'RINGING!' : 'IDLE';
-      document.getElementById('bellLastTime').innerText = bell.last_ring_time;
-      document.getElementById('bellUpdated').innerText = `SYNC: ${bell.updated_at}`;
-      const bellBadge = document.getElementById('bellStateBadge');
-      bellBadge.innerText = bell.bell_pressed ? 'VISITOR ALERT' : 'STANDBY';
-      bellBadge.className = 'badge ' + (bell.bell_pressed ? 'badge-amber' : 'badge-neutral');
-      document.getElementById('doorbellBanner').className = bell.bell_pressed ? 'doorbell-banner active' : 'doorbell-banner';
-
-      // 4. Thermostat
-      const th = data.thermostat;
-      document.getElementById('tempVal').innerText = Number(th.temperature).toFixed(1);
-      document.getElementById('humVal').innerText = Number(th.humidity).toFixed(0);
-      document.getElementById('thermoUpdated').innerText = `SYNC: ${th.updated_at}`;
-      const fanBadge = document.getElementById('fanBadge');
-      fanBadge.innerText = `FAN: ${th.fan_status}`;
-      fanBadge.className = 'badge ' + (th.fan_status === 'ON' ? 'badge-green' : 'badge-neutral');
-
-      // 5. Water
-      const wt = data.water;
-      document.getElementById('waterLevelVal').innerText = wt.level_value;
-      document.getElementById('waterBar').style.width = `${Math.min(100, Math.max(0, wt.level_value))}%`;
-      document.getElementById('waterUpdated').innerText = `SYNC: ${wt.updated_at}`;
-      const waterBadge = document.getElementById('waterCatBadge');
-      waterBadge.innerText = wt.category;
-      if (wt.category === 'PENUH' || wt.category === 'RENDAH') {
-        waterBadge.className = 'badge badge-amber';
-        document.getElementById('waterNotice').innerText = `PERINGATAN: Kondisi air saat ini ${wt.category}!`;
-      } else {
-        waterBadge.className = 'badge badge-green';
-        document.getElementById('waterNotice').innerText = 'Status ketinggian air berada pada batas aman.';
-      }
-
-      // 6. Logs
-      const logBox = document.getElementById('logContainer');
-      logBox.innerHTML = (data.logs || []).map(item => {
-        let color = '#7d8590';
-        if (item.type === 'danger') color = '#ff7b72';
-        if (item.type === 'warning') color = '#e3b341';
-        if (item.type === 'success') color = '#3fb950';
-        if (item.type === 'control') color = '#58a6ff';
-        return `<div class="log-entry">
-          <span class="log-time">[${item.time}]</span>
-          <span class="log-mod" style="color:${color}">${item.module}</span>
-          <span>${item.message}</span>
-        </div>`;
-      }).join('');
-    }
-
-    // ACTIONS
-    async function setLightingIntensity(val) {
-      await fetch('/api/lighting/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intensity: Number(val), status: Number(val) > 0 ? 'ON' : 'OFF' })
-      });
-      fetchState();
-    }
-
-    async function setLightingPreset(val) {
-      document.getElementById('lampSlider').value = val;
-      document.getElementById('lampIntensityVal').innerText = val;
-      await setLightingIntensity(val);
-    }
-
-    async function overrideDoor(lock_status) {
-      await fetch('/api/doorlock/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lock_status })
-      });
-      fetchState();
-    }
-
-    async function ackDoorbell() {
-      await fetch('/api/doorbell/ack', { method: 'POST' });
-      fetchState();
-    }
-
-    async function setFan(fan_status) {
-      await fetch('/api/thermostat/fan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fan_status })
-      });
-      fetchState();
-    }
-
-    function saveCamUrl() {
-      const url = document.getElementById('camUrlInput').value.trim();
-      const box = document.getElementById('camBox');
-      if (url) {
-        box.innerHTML = `<img src="${url}" alt="ESP32-CAM Stream" onerror="this.outerHTML='<div class=cam-placeholder>Gagal memuat stream dari ${url}</div>'" />`;
-      }
-    }
-
-    // FUNGSI QUICK TEST SIMULATOR
-    async function simRfidValid() {
-      await fetch('/api/doorlock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ last_uid: '31C1BA75', lock_status: 'UNLOCKED', access_alert: 'DIIZINKAN' })
-      });
-      fetchState();
-    }
-
-    async function simRfidInvalid() {
-      await fetch('/api/doorlock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ last_uid: '99FF0012', lock_status: 'LOCKED', access_alert: 'DITOLAK' })
-      });
-      fetchState();
-    }
-
-    async function simBell() {
-      await fetch('/api/doorbell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bell_pressed: true })
-      });
-      fetchState();
-    }
-
-    async function simWaterFull() {
-      await fetch('/api/water', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level_value: 95, category: 'PENUH' })
-      });
-      fetchState();
-    }
-
-    setInterval(fetchState, 1500);
-    fetchState();
-  </script>
+  <!-- Scripts -->
+  <script src="app.js"></script>
 </body>
 </html>

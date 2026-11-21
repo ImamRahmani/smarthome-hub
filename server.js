@@ -1,6 +1,8 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,138 +11,253 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// === 1. STATE TERPUSAT SESUAI KONTRAK MASTER ===
-const systemState = {
-  lighting: { status: "OFF", intensity: 0, updated_at: "-" },
-  doorlock: { lock_status: "LOCKED", last_uid: "-", access_alert: "AMAN", updated_at: "-" },
-  doorbell: { bell_pressed: false, last_ring_time: "-", updated_at: "-" },
-  thermostat: { temperature: 28.5, humidity: 65.0, fan_status: "OFF", updated_at: "-" },
-  water: { level_value: 50, category: "NORMAL", updated_at: "-" },
-  camera: { stream_url: "" }
-};
-
-const activityLogs = [];
-function addLog(module, message, type = "info") {
-  const time = new Date().toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Makassar' });
-  activityLogs.unshift({ time, module, message, type });
-  if (activityLogs.length > 25) activityLogs.pop();
-}
-
 function nowTime() {
   return new Date().toLocaleTimeString('id-ID', { hour12: false, timeZone: 'Asia/Makassar' });
 }
 
-// === 2. ENDPOINT UNTUK FRONTEND DASHBOARD ===
-app.get('/api/state', (req, res) => {
-  res.json({ ...systemState, logs: activityLogs });
-});
+// Helper: Ambil state perangkat
+async function getDeviceState(deviceId) {
+  const [rows] = await db.query('SELECT state_json FROM device_states WHERE device_id = ?', [deviceId]);
+  if (rows.length === 0) return null;
+  return typeof rows[0].state_json === 'string' ? JSON.parse(rows[0].state_json) : rows[0].state_json;
+}
 
-// === 3. FITUR A: SMART LIGHTING (NO. 2) ===
-app.get('/api/lighting', (req, res) => {
-  systemState.lighting.updated_at = nowTime();
-  res.json({
-    status: systemState.lighting.status,
-    intensity: systemState.lighting.intensity
-  });
-});
+// Helper: Update state perangkat
+async function setDeviceState(deviceId, stateObj) {
+  stateObj.updated_at = nowTime();
+  await db.query(
+    'UPDATE device_states SET state_json = ?, updated_at = NOW() WHERE device_id = ?',
+    [JSON.stringify(stateObj), deviceId]
+  );
+  return stateObj;
+}
 
-app.post('/api/lighting/control', (req, res) => {
-  const { status, intensity } = req.body;
-  if (status !== undefined) systemState.lighting.status = status;
-  if (intensity !== undefined) {
-    systemState.lighting.intensity = Number(intensity);
-    systemState.lighting.status = Number(intensity) > 0 ? "ON" : "OFF";
+// Helper: Catat audit keamanan / log aktivitas
+async function insertLog(moduleName, identifier, status) {
+  await db.query(
+    'INSERT INTO security_logs (event_type, identifier, status) VALUES (?, ?, ?)',
+    [moduleName, identifier, status]
+  );
+}
+
+// === 1. ENDPOINT TELEMETRI UTAMA (FRONTEND DASHBOARD) ===
+app.get('/api/state', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT device_id, state_json FROM device_states');
+    const state = {};
+    rows.forEach(r => {
+      state[r.device_id] = typeof r.state_json === 'string' ? JSON.parse(r.state_json) : r.state_json;
+    });
+
+    // Ambil 25 aktivitas terakhir dari MySQL
+    const [logs] = await db.query(
+      `SELECT 
+        DATE_FORMAT(recorded_at, '%H:%i:%s') AS time, 
+        event_type AS module, 
+        CONCAT(identifier, ' -> ', status) AS message,
+        CASE 
+          WHEN status LIKE '%DITOLAK%' THEN 'danger'
+          WHEN status LIKE '%BEL DITEKAN%' OR status LIKE '%PENUH%' OR status LIKE '%RENDAH%' THEN 'warning'
+          WHEN status LIKE '%DIIZINKAN%' OR status LIKE '%ON%' THEN 'success'
+          ELSE 'control'
+        END AS type
+       FROM security_logs ORDER BY id DESC LIMIT 25`
+    );
+
+    res.json({ ...state, logs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  addLog("LIGHTING", `Lampu diatur ke ${systemState.lighting.status} (${systemState.lighting.intensity}%)`, "control");
-  res.json({ ok: true, lighting: systemState.lighting });
 });
 
-// === 4. FITUR B: SMART DOOR LOCK RFID (NO. 4) ===
-// ESP32 membaca perintah kunci dari dashboard (tambahan kontrak)
-app.get('/api/doorlock', (req, res) => {
-  res.json({ lock_status: systemState.doorlock.lock_status });
-});
-
-app.post('/api/doorlock', (req, res) => {
-  const { last_uid, lock_status, access_alert } = req.body;
-  if (last_uid !== undefined) systemState.doorlock.last_uid = String(last_uid);
-  if (lock_status !== undefined) systemState.doorlock.lock_status = lock_status;
-  if (access_alert !== undefined) systemState.doorlock.access_alert = access_alert;
-  systemState.doorlock.updated_at = nowTime();
-
-  const logType = access_alert === "DITOLAK" ? "danger" : "success";
-  addLog("DOORLOCK", `Kartu [${systemState.doorlock.last_uid}] -> ${access_alert} (${lock_status})`, logType);
-  res.json({ ok: true });
-});
-
-app.post('/api/doorlock/control', (req, res) => {
-  const { lock_status } = req.body;
-  if (lock_status === "LOCKED" || lock_status === "UNLOCKED") {
-    systemState.doorlock.lock_status = lock_status;
-    systemState.doorlock.access_alert = lock_status === "LOCKED" ? "AMAN" : "DIIZINKAN";
-    systemState.doorlock.updated_at = nowTime();
-    addLog("DOORLOCK", `Override manual via Web: ${lock_status}`, "control");
+// Endpoint data historis grafik sensor
+app.get('/api/history', async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT metric_name, metric_value, DATE_FORMAT(recorded_at, '%H:%i:%s') AS time 
+       FROM telemetry_logs ORDER BY id DESC LIMIT 30`
+    );
+    res.json(rows.reverse());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ ok: true, doorlock: systemState.doorlock });
 });
 
-// === 5. FITUR C: VIDEO DOORBELL (NO. 5) ===
-app.post('/api/doorbell', (req, res) => {
-  const { bell_pressed } = req.body;
-  systemState.doorbell.bell_pressed = Boolean(bell_pressed);
-  systemState.doorbell.updated_at = nowTime();
-
-  if (bell_pressed) {
-    systemState.doorbell.last_ring_time = nowTime();
-    addLog("DOORBELL", "Bel pintu ditekan! Ada pengunjung di depan pintu.", "warning");
+// === 2. FITUR SMART LIGHTING (NO. 2) ===
+app.get('/api/lighting', async (req, res) => {
+  try {
+    const data = await getDeviceState('lighting');
+    res.json({ status: data.status, intensity: data.intensity });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ ok: true });
 });
 
-app.post('/api/doorbell/ack', (req, res) => {
-  systemState.doorbell.bell_pressed = false;
-  addLog("DOORBELL", "Notifikasi bel diterima oleh pemilik rumah.", "info");
-  res.json({ ok: true });
-});
+app.post('/api/lighting/control', async (req, res) => {
+  try {
+    const { status, intensity } = req.body;
+    const current = await getDeviceState('lighting');
 
-// === 6. FITUR D: SMART THERMOSTAT (NO. 6) ===
-app.post('/api/thermostat', (req, res) => {
-  const { temperature, humidity } = req.body;
-  if (temperature !== undefined) systemState.thermostat.temperature = Number(temperature);
-  if (humidity !== undefined) systemState.thermostat.humidity = Number(humidity);
-  systemState.thermostat.updated_at = nowTime();
+    if (intensity !== undefined) {
+      current.intensity = Number(intensity);
+      current.status = Number(intensity) > 0 ? 'ON' : 'OFF';
+    } else if (status !== undefined) {
+      current.status = status;
+    }
 
-  res.json({ fan_status: systemState.thermostat.fan_status });
-});
-
-app.post('/api/thermostat/fan', (req, res) => {
-  const { fan_status } = req.body;
-  if (fan_status === "ON" || fan_status === "OFF") {
-    systemState.thermostat.fan_status = fan_status;
-    addLog("THERMOSTAT", `Kipas pendingin diatur ke ${fan_status}`, "control");
+    await setDeviceState('lighting', current);
+    await insertLog('LIGHTING', 'Web Control', `Diatur ke ${current.status} (${current.intensity}%)`);
+    res.json({ ok: true, lighting: current });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ ok: true, fan_status: systemState.thermostat.fan_status });
 });
 
-// === 7. FITUR E: WATER MONITOR (NO. 7) ===
-app.post('/api/water', (req, res) => {
-  const { level_value, category } = req.body;
-  const prevCategory = systemState.water.category;
-
-  if (level_value !== undefined) systemState.water.level_value = Number(level_value);
-  if (category !== undefined) systemState.water.category = category;
-  systemState.water.updated_at = nowTime();
-
-  if (category && category !== prevCategory) {
-    const logType = (category === "RENDAH" || category === "PENUH") ? "warning" : "info";
-    addLog("WATER", `Status tangki air berubah menjadi ${category} (${systemState.water.level_value}%)`, logType);
+// === 3. FITUR SMART DOOR LOCK (NO. 4) ===
+app.get('/api/doorlock', async (req, res) => {
+  try {
+    const data = await getDeviceState('doorlock');
+    res.json({ lock_status: data.lock_status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json({ ok: true });
+});
+
+app.post('/api/doorlock', async (req, res) => {
+  try {
+    const { last_uid, lock_status, access_alert } = req.body;
+    const current = await getDeviceState('doorlock');
+
+    if (last_uid !== undefined) current.last_uid = String(last_uid);
+    if (lock_status !== undefined) current.lock_status = lock_status;
+    if (access_alert !== undefined) current.access_alert = access_alert;
+
+    await setDeviceState('doorlock', current);
+    await insertLog('DOORLOCK', `Kartu [${current.last_uid}]`, `${access_alert} (${lock_status})`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/doorlock/control', async (req, res) => {
+  try {
+    const { lock_status } = req.body;
+    const current = await getDeviceState('doorlock');
+
+    current.lock_status = lock_status;
+    current.access_alert = lock_status === 'LOCKED' ? 'AMAN' : 'DIIZINKAN';
+
+    await setDeviceState('doorlock', current);
+    await insertLog('DOORLOCK', 'Web Override', `Status gerendel: ${lock_status}`);
+    res.json({ ok: true, doorlock: current });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === 4. FITUR VIDEO DOORBELL (NO. 5) ===
+app.post('/api/doorbell', async (req, res) => {
+  try {
+    const { bell_pressed } = req.body;
+    const current = await getDeviceState('doorbell');
+    current.bell_pressed = Boolean(bell_pressed);
+
+    if (bell_pressed) {
+      current.last_ring_time = nowTime();
+      await insertLog('DOORBELL', 'Tamu Depan', 'BEL DITEKAN');
+    }
+
+    await setDeviceState('doorbell', current);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/doorbell/ack', async (req, res) => {
+  try {
+    const current = await getDeviceState('doorbell');
+    current.bell_pressed = false;
+    await setDeviceState('doorbell', current);
+    await insertLog('DOORBELL', 'Web Dashboard', 'Notifikasi Direspon');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === 5. FITUR SMART THERMOSTAT (NO. 6) ===
+app.post('/api/thermostat', async (req, res) => {
+  try {
+    const { temperature, humidity } = req.body;
+    const current = await getDeviceState('thermostat');
+
+    if (temperature !== undefined) current.temperature = Number(temperature);
+    if (humidity !== undefined) current.humidity = Number(humidity);
+
+    await setDeviceState('thermostat', current);
+
+    // Simpan ke riwayat telemetri
+    if (temperature !== undefined && humidity !== undefined) {
+      await db.query(
+        'INSERT INTO telemetry_logs (device_id, metric_name, metric_value) VALUES ("thermostat", "temperature", ?), ("thermostat", "humidity", ?)',
+        [temperature, humidity]
+      );
+    }
+
+    res.json({ fan_status: current.fan_status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/thermostat/fan', async (req, res) => {
+  try {
+    const { fan_status } = req.body;
+    const current = await getDeviceState('thermostat');
+
+    if (fan_status === 'ON' || fan_status === 'OFF') {
+      current.fan_status = fan_status;
+      await setDeviceState('thermostat', current);
+      await insertLog('THERMOSTAT', 'Kipas DC', `Status diubah ke ${fan_status}`);
+    }
+
+    res.json({ ok: true, fan_status: current.fan_status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === 6. FITUR WATER MONITOR (NO. 7) ===
+app.post('/api/water', async (req, res) => {
+  try {
+    const { level_value, category } = req.body;
+    const current = await getDeviceState('water');
+    const prevCat = current.category;
+
+    if (level_value !== undefined) current.level_value = Number(level_value);
+    if (category !== undefined) current.category = category;
+
+    await setDeviceState('water', current);
+
+    if (level_value !== undefined) {
+      await db.query(
+        'INSERT INTO telemetry_logs (device_id, metric_name, metric_value) VALUES ("water", "water_level", ?)',
+        [level_value]
+      );
+    }
+
+    if (category && category !== prevCat) {
+      await insertLog('WATER', 'Sensor Tangki', `Status berubah ke ${category} (${level_value}%)`);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  addLog("SYSTEM", "Smart Home Hub Server aktif dan siap menerima koneksi ESP32.", "info");
-  console.log(`Server Smart Home berjalan di port ${PORT}`);
+  console.log(`Server Smart Home (MySQL Storage) aktif di port ${PORT}`);
 });
-
-module.exports = app;
