@@ -65,7 +65,8 @@ void resetClient(bool isHttps) {
 }
 
 bool initCamera() {
-  camera_config_t config;
+  camera_config_t config = {}; // WAJIB = {} agar field lain tidak berisi nilai acak
+
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
   config.pin_d0 = Y2_GPIO_NUM;
@@ -89,11 +90,25 @@ bool initCamera() {
 #endif
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
+
+  // 1. Turunkan XCLK dari 20 MHz ke 10 MHz (coba 8000000 jika masih muncul FB-OVF)
+  config.xclk_freq_hz = 10000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_QVGA;   // 320x240, ringan & cepat
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
+  config.frame_size = FRAMESIZE_QVGA; // 320x240
+
+  // 2. Atur alokasi buffer, kualitas JPEG, dan grab_mode secara eksplisit
+  if (psramFound()) {
+    config.jpeg_quality = 15; // Sedikit lebih terkompresi agar ukuran buffer lebih aman
+    config.fb_count = 1;      // Mode on-demand: cocok untuk kirim per-frame via HTTP/HTTPS
+    config.fb_location = CAMERA_FB_IN_PSRAM;
+    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  } else {
+    Serial.println("[CAM] PERINGATAN: PSRAM tidak terdeteksi!");
+    config.jpeg_quality = 20;
+    config.fb_count = 1;
+    config.fb_location = CAMERA_FB_IN_DRAM;
+    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  }
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
